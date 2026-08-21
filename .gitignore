@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Environment variables / secrets
+.env
+.env.*
+!.env.example
+
+# SQLite database
+*.db
+*.sqlite
+*.sqlite3
+
+# Trained/generated model files
+*.pkl
+*.joblib
+
+# Generated data
+backend/data/generated/
+*.csv
+
+# Logs
+*.log
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Node / React
+node_modules/
+dist/
+build/
+
+# Temporary files
+*.tmp
+*.bak
