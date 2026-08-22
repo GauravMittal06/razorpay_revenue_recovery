@@ -22,8 +22,8 @@ def execute_action(payment: dict, decision: dict, conn) -> dict:
     conn.execute(
         """
         INSERT INTO recovery_actions
-        (payment_id, action_type, timestamp, triggered_by, reasoning, outcome)
-        VALUES (?, ?, ?, ?, ?, ?)
+        (payment_id, action_type, timestamp, triggered_by, reasoning, outcome, ml_recovery_probability)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         (
             payment_id,
@@ -32,6 +32,7 @@ def execute_action(payment: dict, decision: dict, conn) -> dict:
             decision["triggered_by"],
             decision["reasoning"],
             decision["outcome"],
+            decision.get("ml_recovery_probability"),
         ),
     )
 

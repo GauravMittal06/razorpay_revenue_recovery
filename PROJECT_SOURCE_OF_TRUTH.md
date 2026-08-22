@@ -3,6 +3,10 @@
 
 ---
 
+**Status markers used throughout this document:** **[LOCKED]** = decided, in force. **[PENDING]** = locked in principle, exact parameters await verification. **[DEFERRED]** = explicitly out of current scope, requires separate approval to begin. **[CONCEPTUAL]** = named for documentation/framing purposes only, not implemented or planned in the current build.
+
+---
+
 ## 0. EVENT CONTEXT
 - Razorpay AI Buildathon — student-only, hiring AI Builder Interns
 - Solo build, no team
@@ -38,7 +42,13 @@ Everything else — action selection, compliance checks, logging, LLM messaging,
 
 **Explicitly excluded:** fraud/DDOS/spam detection (Track 02's territory — do not drift into it)
 
-**Data volume:** 150 synthetic records
+**Data volume:** 150 synthetic records (demo/evaluation dataset).
+
+**ML training corpus distinction:** Stage 2 ML model training used a **separate, simulator-generated training corpus** — approximately 8,000 simulated cases / 22,016 candidate-action rows — with grouped train/test separation (17,605 train rows / 6,400 cases; 4,411 test rows / 1,600 cases). This corpus is distinct from and does not replace the 150-record demo/evaluation dataset above; the 150 records remain the fixed demo/evaluation set, unchanged.
+
+**[PENDING] Root-cause retry-eligibility gate:** Within the existing shared `decide_action()` function, `retry` will be gated as ineligible for root causes where a retry cannot succeed by definition (candidate: `expired_card`; others to be confirmed). This does not add a new root cause, a new pipeline, or a new function — it is a conditional restriction on which `action_type` the existing rule engine may select for a given `root_cause`, evaluated alongside existing compliance checks. The exact non-retryable mapping is locked only after a read-only audit of current `decide_action()` behavior and explicit approval of the mapping.
+
+**[CONCEPTUAL] Lifecycle framing (documentation only, no architecture change):** The existing shared engine is described end-to-end as: **Prevent → Diagnose → Retry/Recovery Action → Communicate → Escalate**. Implementation status per stage: `Diagnose` (`classify()`) and `Retry/Recovery Action` (`decide_action()` + `execute_action()`) are implemented as of the current Stage 1/2 build. `Communicate` (LLM messaging, Section 5) is not yet implemented — it is the locked Stage 3 build. `Escalate`'s underlying rule-engine logic (auto-stop/escalation rules, Section 7) already exists as of Stage 1; the human-facing escalation console and full context presentation (Section 9a) is not yet implemented — it is the locked Stage 4 build. **`Prevent` is explicitly [CONCEPTUAL]** — no upstream failure-prevention capability (e.g. pre-expiry card warnings) is implemented or planned in the current build; it is named only to accurately describe the lifecycle position of the other four stages.
 
 ## 4. DIFFERENTIATION STRATEGY
 Most competitors will build: LLM sends a reminder on failure, no real diagnosis, no stopping rules, clean fake data, no audit trail.
@@ -61,10 +71,12 @@ Execution quality, the pitch video narrative, and panel interview performance ma
 | Recovery action selection (retry/wait/escalate/stop) | Rule engine (final authority) |
 | Stopping rule enforcement | Hard-coded rules |
 | Risk/recovery-probability scoring | ML (XGBoost / logistic regression) — informs rules, never overrides |
-| Customer-facing message generation | LLM (Gemini API) |
-| Reply/intent parsing (promise-to-pay, dispute, Hinglish) | LLM, structured JSON output only |
+| Customer-facing message generation | LLM (Gemini API) — root-cause-specific, action-oriented recovery communication; LLM generates language only and never selects, triggers, or overrides a recovery action |
+| Reply/intent parsing (promise-to-pay, dispute, payment_method_updated, Hinglish) | LLM, structured JSON output only |
 
 Rule engine is always final authority on compliance. LLM never makes control decisions — only generates language or extracts structured intent.
+
+Root-cause-specific messaging is a content requirement on the existing LLM function, not a new AI method or new decision authority — the sentence above already governs it.
 
 ## 6. DATA SCHEMA (Razorpay-aligned field names)
 
@@ -82,7 +94,7 @@ Rule engine is always final authority on compliance. LLM never makes control dec
 - `customer_id`, `name`, `payment_history_score` (0–1), `past_recovery_rate`, `preferred_channel`
 
 **recovery_actions** (audit log)
-- `action_id`, `payment_id`, `action_type` (retry/reminder/escalate/stop), `timestamp`, `triggered_by` (rule/ml/llm), `reasoning`, `outcome`
+- `action_id`, `payment_id`, `action_type` (retry/reminder/escalate/stop), `timestamp`, `triggered_by` (rule/ml/llm), `reasoning`, `outcome`, `ml_recovery_probability` (nullable — advisory ML signal, populated only on `outcome="executed"`)
 
 **messages**
 - `message_id`, `payment_id`, `sender` (agent/customer), `content`, `intent_extracted`, `timestamp`
@@ -108,6 +120,7 @@ Rule engine is always final authority on compliance. LLM never makes control dec
 - Time-to-recovery distribution
 - False-positive cost (control group split)
 - Exceptions unresolved (count + reasons)
+- External industry benchmark comparison (e.g. published third-party recovery-rate figures) — shown as a clearly labeled contextual reference point only, never framed as a claim of superiority over production payment providers or as a like-for-like comparison (different data, scale, and conditions)
 
 ## 9. SURFACES
 1. Ops Dashboard (primary) — batch view, filters, metrics panel, case detail with audit trail
@@ -125,6 +138,7 @@ Purpose: prove the system is genuinely reasoning live, not hardcoded/scripted �
    - Raw LLM output (JSON: intent, confidence, extracted date, sentiment)
    - Rule engine's resulting decision given that output
    - Compliance check result (e.g. retry count vs limit, cooldown status)
+   - **On escalation specifically, this panel must present the full case context bundle: payment history, root cause, ML recovery probability (`ml_recovery_probability`), full message/conversation thread, all prior recovery actions, and a recommended next step.** The recommended next step is not a separate stored field — it is derived from the existing rule-engine decision/action output already produced by `decide_action()`/`execute_action()`, presented in the panel rather than computed by any new logic. This is a completeness requirement on this already-locked reasoning panel — no new subsystem, no new data field, no new model. Payment history (`payment_history_score`/`past_recovery_rate`), root cause (derivable from `error_reason` via `classify()`), `ml_recovery_probability`, and prior recovery actions are already produced/logged as of Stage 1/2 completion. The message/conversation thread depends on Stage 3 (LLM messaging layer, not yet built as of this amendment) — the `messages` table schema already exists, but population is a Stage 3 dependency; this bundle requirement must be satisfied at Stage 4 build time, by which point Stage 3 is complete per the existing build order (Section 11).
 4. Live audit trail feed — appends in real time as actions happen (timestamp, action_type, triggered_by, reasoning) — reads directly from the database, not a mock.
 5. Metrics that recompute live — aggregate stats (recovery rate, ₹ recovered) update visibly when case status changes, not static/pre-baked.
 
@@ -151,10 +165,11 @@ Applies to video submission and panel interview both.
 **What does NOT need special proof:** data generation realism, frontend visual polish, exact simulated ₹ amounts. Effort should concentrate on proving intelligence, compliance, and honesty — not on polishing things nobody will doubt.
 
 ## 9c. REQUIRED AGENT LOGIC (build work — not just demo scenarios)
-Two behaviors must be real, working logic in the rule engine / LLM layer, not just demo flourishes:
+Three behaviors must be real, working logic in the rule engine / LLM layer, not just demo flourishes:
 
 1. **Confidence threshold handling** — LLM intent extraction returns a confidence score. Below a set threshold (e.g. <0.6), the rule engine does NOT auto-close or auto-schedule — it flags the case for manual review instead. This must be real branching logic, not decorative.
 2. **Self-consistency / mismatch check** — before acting on a customer reply, the rule engine cross-checks extracted intent against the case's existing root_cause data. If they conflict (e.g. root_cause = insufficient_funds but reply mentions an expired card), flag the inconsistency in the audit trail instead of proceeding blindly.
+3. **`payment_method_updated` structured intent (Stage 3)** — Reply/intent parsing (Section 5's LLM row) recognizes `payment_method_updated` as one additional structured intent value, alongside existing categories (promise-to-pay, dispute, etc.). Recognizing this intent does not itself authorize any action — per Section 5's locked authority rule, the LLM extracts intent only; the existing `decide_action()` rule engine re-evaluates the next eligible action exactly as it does for any other extracted intent, subject to the same compliance checks (cooldown, retry limits, contact hours) already in force. No new pipeline, no new action type, no new decision authority.
 
 ## 9d. DEMO SCENARIOS (test cases against existing build — no new architecture)
 These exercise the Live Agent Console with harder inputs. Not separate features — just things to type/trigger when demoing or recording:
@@ -185,6 +200,17 @@ These exercise the Live Agent Console with harder inputs. Not separate features 
 
 New ideas mid-build go on a "later" list — don't touch until stage 5 is stable.
 
+**[DEFERRED] Deferred / later list (not part of current build order, not to be started before Stage 5 is stable, requires separate explicit approval to begin):**
+- Optimal-retry-**timing** prediction (predicting *when* a retry is most likely to succeed, not just current probability-of-success). Would require: a new ML target definition, a timing representation (e.g. best-window feature/label), retraining and re-evaluating the model, and new integration surface in `decide_action()` beyond the current advisory-only `ml_recovery_probability` signal. Explicitly out of Stage 2's current scope.
+- Multi-channel escalation (SMS/in-app layered on top of existing channel)
+- LTV/customer-value-based segmentation
+- Merchant-specific cohort/baseline layer
+- Recovery strategy A/B experimentation
+- "Pay and stay" / retention metric
+- Multi-PSP / alternate gateway routing
+- Literal autonomous "recovery-case agent" framing that would imply the LLM controls or executes actions (narrative language describing the existing pipeline is fine; an actual new decision authority is not — Section 5 stays locked as written)
+- Any other adjacent feature not explicitly locked elsewhere in this document
+
 ## 12. DAY-BY-DAY PLAN
 | Days | Task |
 |---|---|
@@ -213,4 +239,3 @@ Do this every time a real failure occurs, not just once — multiple logs are fi
 - User has RAG pipeline experience + heavy AI-assisted coding, limited independent tech-stack knowledge — plans must stay explicit and unambiguous
 
 ---
-*Paste this whole file as the first message in any new chat to continue.*

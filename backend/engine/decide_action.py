@@ -12,6 +12,7 @@ Compliance rules (SoT section 7, locked, non-negotiable):
 """
 
 import time
+import os
 from datetime import datetime
 
 MAX_RETRIES = 3
@@ -40,6 +41,82 @@ def _has_customer_reply(payment_id: str, conn) -> bool:
     return row["c"] > 0
 
 
+_ML_MODEL = None
+_ML_MODEL_LOAD_ATTEMPTED = False
+
+
+def _load_ml_model():
+    """Lazy-load the ML model once. Never raises -- returns None on any failure."""
+    global _ML_MODEL, _ML_MODEL_LOAD_ATTEMPTED
+    if _ML_MODEL_LOAD_ATTEMPTED:
+        return _ML_MODEL
+    _ML_MODEL_LOAD_ATTEMPTED = True
+    try:
+        import joblib
+        model_path = os.path.join(
+            os.path.dirname(__file__), "..", "ml", "models", "xgb_model.joblib"
+        )
+        _ML_MODEL = joblib.load(model_path)
+    except Exception:
+        _ML_MODEL = None
+    return _ML_MODEL
+
+
+def _get_customer(customer_id, conn):
+    if not customer_id:
+        return {}
+    row = conn.execute(
+        "SELECT * FROM customers WHERE customer_id = ?", (customer_id,)
+    ).fetchone()
+    return dict(row) if row else {}
+
+
+def _get_recovery_probability(payment, classification, candidate_action,
+                               retry_only_count, history, now, conn):
+    """
+    Advisory-only ML signal. Scores the single action already selected by
+    the rule engine -- does not compare alternative actions, does not
+    influence action selection. Returns None if model unavailable or
+    scoring fails for any reason.
+    """
+    model = _load_ml_model()
+    if model is None:
+        return None
+    try:
+        customer = _get_customer(payment.get("customer_id"), conn)
+
+        last_entry = history[-1] if history else None
+        last_action_type = last_entry["action_type"] if last_entry else "none"
+        hours_since_last_action = (
+            (now - last_entry["timestamp"]) / 3600 if last_entry else 0
+        )
+
+        days_since_event = (now - payment["created_at"]) / 86400
+
+        import pandas as pd
+        row = pd.DataFrame([{
+            "event_type": payment.get("event_type"),
+            "root_cause": classification.get("root_cause") if classification else None,
+            "amount": payment.get("amount"),
+            "method": payment.get("method"),
+            "retry_count": retry_only_count,
+            "days_since_event": days_since_event,
+            "days_overdue": payment.get("days_overdue") or 0,
+            "last_action_type": last_action_type,
+            "hours_since_last_action": hours_since_last_action,
+            "candidate_action": candidate_action,
+            "payment_history_score": customer.get("payment_history_score", 0.5),
+            "past_recovery_rate": customer.get("past_recovery_rate", 0.5),
+            "preferred_channel": customer.get("preferred_channel", "email"),
+        }])
+        row["root_cause"] = row["root_cause"].fillna("none")
+
+        proba = model.predict_proba(row)[0, 1]
+        return round(float(proba), 4)
+    except Exception:
+        return None
+
+
 def decide_action(payment: dict, classification: dict, conn) -> dict:
     """
     Returns:
@@ -64,6 +141,13 @@ def decide_action(payment: dict, classification: dict, conn) -> dict:
     ]
     contact_count = len(contact_history)
     last_contact_ts = contact_history[-1]["timestamp"] if contact_history else None
+
+    # ML-only signal: actual retry attempts, distinct from contact_count
+    # (which combines retry+reminder for the compliance check above).
+    retry_only_count = len([
+        h for h in history
+        if h["action_type"] == "retry" and h["outcome"] == "executed"
+    ])
 
     already_escalated = any(
         h["action_type"] == "escalate" and h["outcome"] == "executed" for h in history
@@ -112,6 +196,10 @@ def decide_action(payment: dict, classification: dict, conn) -> dict:
             "reasoning": f"No customer response after {AUTO_STOP_DAYS} days. Auto-escalating to human queue.",
             "outcome": "executed",
             "triggered_by": "rule",
+            "ml_recovery_probability": _get_recovery_probability(
+                payment, classification, "escalate",
+                retry_only_count, history, now, conn
+            ),
         }
 
     # max 3 contact attempts -> stop
@@ -156,4 +244,8 @@ def decide_action(payment: dict, classification: dict, conn) -> dict:
         "reasoning": f"Compliance checks passed. Executing {default_action} (attempt {contact_count + 1}/{MAX_RETRIES}).",
         "outcome": "executed",
         "triggered_by": "rule",
+        "ml_recovery_probability": _get_recovery_probability(
+            payment, classification, default_action,
+            retry_only_count, history, now, conn
+        ),
     }

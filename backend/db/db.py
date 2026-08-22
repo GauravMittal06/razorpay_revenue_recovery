@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS recovery_actions (
     triggered_by TEXT,
     reasoning TEXT,
     outcome TEXT,
+    ml_recovery_probability REAL,
     FOREIGN KEY (payment_id) REFERENCES payments(id)
 );
 
