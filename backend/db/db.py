@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS recovery_actions (
     reasoning TEXT,
     outcome TEXT,
     ml_recovery_probability REAL,
+    flag_type TEXT,
     FOREIGN KEY (payment_id) REFERENCES payments(id)
 );
 
@@ -63,6 +64,8 @@ CREATE TABLE IF NOT EXISTS messages (
     sender TEXT,
     content TEXT,
     intent_extracted TEXT,
+    intent_confidence REAL,
+    mentioned_reason TEXT,
     timestamp INTEGER,
     FOREIGN KEY (payment_id) REFERENCES payments(id)
 );

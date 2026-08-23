@@ -21,6 +21,16 @@ AUTO_STOP_DAYS = 7
 CONTACT_WINDOW_START = 9   # 9am
 CONTACT_WINDOW_END = 20    # 8pm
 
+# Stage 3, Micro-step 1 (locked): LLM intent-confidence threshold.
+# Below this, decide_action() never auto-selects an action -- flags for
+# manual review instead (SoT section 9c-1).
+CONFIDENCE_THRESHOLD = 0.6
+
+# Locked error_reason values (SoT section 6) -- used only for compatibility
+# checking against LLM-extracted mentioned_reason, never sent to the LLM.
+METHOD_CLASS_ROOT_CAUSES = {"expired_card", "payment_declined", "authentication_failed"}
+NON_METHOD_ROOT_CAUSES = {"insufficient_funds", "gateway_timeout", "network_error"}
+
 DAY_SECONDS = 86400
 COOLDOWN_SECONDS = COOLDOWN_HOURS * 3600
 
@@ -71,6 +81,28 @@ def _get_customer(customer_id, conn):
     return dict(row) if row else {}
 
 
+def _check_intent_compatibility(root_cause, mentioned_reason, extracted_intent):
+    """
+    Compares LLM-extracted mentioned_reason against the stored root_cause.
+    Returns (flag_type, is_blocking):
+      - (None, False)                          -- nothing to flag, proceed normally
+      - ("root_cause_update_candidate", False) -- payment_method_updated legitimately
+        resolves a method-class root cause; log only, never blocks
+      - ("mismatch", True)                     -- genuine conflict, blocks auto-action
+
+    Stage 3 Micro-step 1 approved contract. Not a simplistic equality check --
+    payment_method_updated against a method-class root cause is treated as a
+    legitimate update, not a conflict.
+    """
+    if mentioned_reason is None or mentioned_reason == root_cause:
+        return None, False
+
+    if extracted_intent == "payment_method_updated" and mentioned_reason in METHOD_CLASS_ROOT_CAUSES:
+        return "root_cause_update_candidate", False
+
+    return "mismatch", True
+
+
 def _get_recovery_probability(payment, classification, candidate_action,
                                retry_only_count, history, now, conn):
     """
@@ -117,18 +149,29 @@ def _get_recovery_probability(payment, classification, candidate_action,
         return None
 
 
-def decide_action(payment: dict, classification: dict, conn) -> dict:
+def decide_action(payment: dict, classification: dict, conn,
+                   extracted_intent: str = None,
+                   intent_confidence: float = None,
+                   mentioned_reason: str = None,
+                   dispute_flag: bool = False) -> dict:
     """
     Returns:
     {
-      "action_type": "retry"|"reminder"|"escalate"|"stop",
+      "action_type": "retry"|"reminder"|"escalate"|"stop"|None,
       "allowed": bool,
       "reasoning": str,
       "outcome": "executed"|"blocked_cooldown"|"blocked_max_retries"|
                  "blocked_contact_hours"|"blocked_already_escalated"|
-                 "blocked_already_stopped",
-      "triggered_by": "rule"
+                 "blocked_already_stopped"|"flagged_manual_review",
+      "triggered_by": "rule",
+      "flag_type": "mismatch"|"root_cause_update_candidate"|"dispute_flag"|None
     }
+
+    extracted_intent / intent_confidence / mentioned_reason / dispute_flag are
+    optional advisory inputs from the LLM intent-parsing layer (Stage 3). They
+    never select or trigger an action directly -- decide_action() remains sole
+    compliance/control authority. Defaults preserve pre-Stage-3 behavior
+    exactly when omitted (e.g. existing core_loop.py batch calls).
     """
     payment_id = payment["id"]
     event_type = payment["event_type"]
@@ -170,7 +213,7 @@ def decide_action(payment: dict, classification: dict, conn) -> dict:
             "triggered_by": "rule",
         }
 
-    # already escalated -> human queue owns it now
+        # already escalated -> human queue owns it now
     if already_escalated:
         return {
             "action_type": "escalate",
@@ -179,6 +222,44 @@ def decide_action(payment: dict, classification: dict, conn) -> dict:
             "outcome": "blocked_already_escalated",
             "triggered_by": "rule",
         }
+
+    # Stage 3, Micro-step 1 (locked): LLM intent pre-gate. Never selects an
+    # action -- only decides whether to hard-stop for manual review.
+    pending_flag_type = None
+    if dispute_flag:
+        return {
+            "action_type": None,
+            "allowed": False,
+            "reasoning": "Customer reply indicates a dispute. Routed to manual review.",
+            "outcome": "flagged_manual_review",
+            "triggered_by": "rule",
+            "flag_type": "dispute_flag",
+        }
+    if intent_confidence is not None and intent_confidence < CONFIDENCE_THRESHOLD:
+        return {
+            "action_type": None,
+            "allowed": False,
+            "reasoning": f"LLM intent confidence {intent_confidence:.2f} below threshold {CONFIDENCE_THRESHOLD}. Routed to manual review.",
+            "outcome": "flagged_manual_review",
+            "triggered_by": "rule",
+            "flag_type": None,
+        }
+    if extracted_intent is not None or mentioned_reason is not None:
+        flag_type, is_blocking_mismatch = _check_intent_compatibility(
+            classification.get("root_cause") if classification else None,
+            mentioned_reason,
+            extracted_intent,
+        )
+        if is_blocking_mismatch:
+            return {
+                "action_type": None,
+                "allowed": False,
+                "reasoning": f"Extracted intent conflicts with stored root_cause (mentioned_reason={mentioned_reason}). Routed to manual review.",
+                "outcome": "flagged_manual_review",
+                "triggered_by": "rule",
+                "flag_type": flag_type,
+            }
+        pending_flag_type = flag_type
 
         # auto-stop after 7 days no response -> escalate
     # invoice_overdue uses days_overdue (event-specific timing input,
@@ -200,6 +281,7 @@ def decide_action(payment: dict, classification: dict, conn) -> dict:
                 payment, classification, "escalate",
                 retry_only_count, history, now, conn
             ),
+            "flag_type": pending_flag_type,
         }
 
     # max 3 contact attempts -> stop
@@ -248,4 +330,5 @@ def decide_action(payment: dict, classification: dict, conn) -> dict:
             payment, classification, default_action,
             retry_only_count, history, now, conn
         ),
+        "flag_type": pending_flag_type,
     }

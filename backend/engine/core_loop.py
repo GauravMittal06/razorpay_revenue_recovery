@@ -12,6 +12,7 @@ from db.db import get_connection
 from engine.classify import classify
 from engine.decide_action import decide_action
 from engine.execute_action import execute_action
+from engine.deliver_message import deliver_recovery_message
 
 
 def run_cycle():
@@ -27,6 +28,7 @@ def run_cycle():
         classification = classify(payment)
         decision = decide_action(payment, classification, conn)
         result = execute_action(payment, decision, conn)
+        deliver_recovery_message(payment, classification, decision, conn)
         results.append(result)
 
     conn.close()

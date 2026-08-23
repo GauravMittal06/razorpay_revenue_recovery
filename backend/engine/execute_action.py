@@ -22,8 +22,8 @@ def execute_action(payment: dict, decision: dict, conn) -> dict:
     conn.execute(
         """
         INSERT INTO recovery_actions
-        (payment_id, action_type, timestamp, triggered_by, reasoning, outcome, ml_recovery_probability)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        (payment_id, action_type, timestamp, triggered_by, reasoning, outcome, ml_recovery_probability, flag_type)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             payment_id,
@@ -33,8 +33,20 @@ def execute_action(payment: dict, decision: dict, conn) -> dict:
             decision["reasoning"],
             decision["outcome"],
             decision.get("ml_recovery_probability"),
+            decision.get("flag_type"),
         ),
     )
+
+    # flagged_manual_review is a hard stop: log only, no recovery side effects.
+    # Same "log but don't execute" pattern as the existing blocked outcomes.
+    if decision["outcome"] == "flagged_manual_review" or decision["action_type"] is None:
+        conn.commit()
+        return {
+            "payment_id": payment_id,
+            "action_type": decision["action_type"],
+            "outcome": decision["outcome"],
+            "reasoning": decision["reasoning"],
+        }
 
     # only advance recovery_status when the action was actually executed
     if decision["outcome"] == "executed":
