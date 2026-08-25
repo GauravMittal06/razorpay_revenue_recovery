@@ -18,8 +18,8 @@ from datetime import datetime
 MAX_RETRIES = 3
 COOLDOWN_HOURS = 24
 AUTO_STOP_DAYS = 7
-CONTACT_WINDOW_START = 9   # 9am
-CONTACT_WINDOW_END = 20    # 8pm
+CONTACT_WINDOW_START = 9   # 9am (9)
+CONTACT_WINDOW_END = 20    # 8pm (20)
 
 # Stage 3, Micro-step 1 (locked): LLM intent-confidence threshold.
 # Below this, decide_action() never auto-selects an action -- flags for

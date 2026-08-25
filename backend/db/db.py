@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS payments (
     recovery_status TEXT,
     customer_id TEXT,
     days_overdue INTEGER,
+    recovered_at INTEGER,
     FOREIGN KEY (customer_id) REFERENCES customers(customer_id)
 );
 

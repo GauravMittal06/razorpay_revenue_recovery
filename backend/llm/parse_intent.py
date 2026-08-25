@@ -19,6 +19,7 @@ On any failure/timeout/malformed JSON, returns the fixed fail-safe fallback
 
 import json
 import os
+import time
 
 # Locked error_reason values (SoT section 6). Must match classify.py's
 # expected values exactly.
@@ -41,6 +42,8 @@ ALLOWED_INTENTS = {
 
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
 GEMINI_TIMEOUT_SECONDS = 30
+GEMINI_MAX_RETRIES = 3
+GEMINI_RETRY_BACKOFF_SECONDS = 2  # doubles each retry: 2s, 4s, 8s
 
 _FALLBACK = {
     "intent": "unclear",
@@ -90,18 +93,22 @@ def _build_user_prompt(customer_message, conversation_history, event_type):
 def _validate_and_normalize(parsed: dict) -> dict:
     """Strict validation. Any deviation from the expected schema -> fallback."""
     if not isinstance(parsed, dict):
+        print(f"[parse_intent] validation failed: not a dict: {parsed!r}")
         return dict(_FALLBACK)
 
     intent = parsed.get("intent")
     if intent not in ALLOWED_INTENTS:
+        print(f"[parse_intent] validation failed: bad intent: {intent!r}")
         return dict(_FALLBACK)
 
     confidence = parsed.get("confidence")
     try:
         confidence = float(confidence)
     except (TypeError, ValueError):
+        print(f"[parse_intent] validation failed: bad confidence type: {confidence!r}")
         return dict(_FALLBACK)
     if not (0.0 <= confidence <= 1.0):
+        print(f"[parse_intent] validation failed: confidence out of range: {confidence!r}")
         return dict(_FALLBACK)
 
     mentioned_reason = parsed.get("mentioned_reason")
@@ -139,23 +146,35 @@ def parse_reply_intent(customer_message: str, conversation_history: list, event_
     if not api_key:
         return dict(_FALLBACK)
 
-    try:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(
-            model_name=GEMINI_MODEL,
-            system_instruction=_SYSTEM_PROMPT,
-        )
-        user_prompt = _build_user_prompt(customer_message, conversation_history, event_type)
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel(
+        model_name=GEMINI_MODEL,
+        system_instruction=_SYSTEM_PROMPT,
+    )
+    user_prompt = _build_user_prompt(customer_message, conversation_history, event_type)
 
-        response = model.generate_content(
-            user_prompt,
-            generation_config={"response_mime_type": "application/json"},
-            request_options={"timeout": GEMINI_TIMEOUT_SECONDS},
-        )
+    last_error = None
+    for attempt in range(GEMINI_MAX_RETRIES):
+        try:
+            response = model.generate_content(
+                user_prompt,
+                generation_config={"response_mime_type": "application/json"},
+                request_options={"timeout": GEMINI_TIMEOUT_SECONDS},
+            )
+            raw_text = response.text
+            parsed = json.loads(raw_text)
+            return _validate_and_normalize(parsed)
 
-        raw_text = response.text
-        parsed = json.loads(raw_text)
-        return _validate_and_normalize(parsed)
+        except Exception as e:
+            last_error = e
+            is_rate_limit = "429" in str(e) or "TooManyRequests" in str(e) or "quota" in str(e).lower()
+            is_last_attempt = attempt == GEMINI_MAX_RETRIES - 1
+            if is_rate_limit and not is_last_attempt:
+                wait = GEMINI_RETRY_BACKOFF_SECONDS * (2 ** attempt)
+                print(f"[parse_intent] rate limited (attempt {attempt+1}/{GEMINI_MAX_RETRIES}), retrying in {wait}s")
+                time.sleep(wait)
+                continue
+            break
 
-    except Exception:
-        return dict(_FALLBACK)
+    print(f"[parse_intent] Gemini call failed after retries: {type(last_error).__name__}: {last_error}")
+    return dict(_FALLBACK)
