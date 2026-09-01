@@ -53,3 +53,5 @@ build/
 # directories that are wiped and rebuilt on every run).
 backend/data_factory/output/
 backend/data_factory/registry/
+
+.claude/

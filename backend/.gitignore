@@ -14,3 +14,5 @@ db/recovery.db
 ml/data/*.csv
 logs/*
 !logs/.gitkeep
+
+.claude/worktrees/

@@ -372,6 +372,151 @@ def test_executor_action_set_matches_the_decider():
 
 
 # --------------------------------------------------------------------------
+# Optimizer authority boundary (added Phase 4)
+#
+# The single highest-severity boundary in the system, and the reason it lives
+# here rather than in test_phase4_optimizer.py: the Phase 4 acceptance gate
+# requires it be "verified by a static import/call-graph check, RE-RUN IN
+# PHASE 9, not just asserted once here." A permanent gate re-runs on every
+# invocation by construction.
+#
+# The optimizer ranks. It proposes. It writes one audit table. Anything that
+# lets it reach execution authority -- an import, a name reference, or a
+# write to a table that carries compliance or execution meaning -- is a
+# failure, checked mechanically rather than by code-review convention.
+# --------------------------------------------------------------------------
+
+OPTIMIZER_MODULES = ("optimize.py", "optimizer_config.py", "intervention_cost.py")
+
+# Names and modules that carry execution or compliance authority.
+FORBIDDEN_AUTHORITY_NAMES = {
+    "execute_action", "decide_action", "mark_opportunity_recovered",
+    "mark_payment_recovered", "run_cycle", "trigger_event",
+    "handle_customer_reply", "deliver_recovery_message",
+}
+FORBIDDEN_AUTHORITY_MODULES = {
+    "backend.engine.execute_action", "engine.execute_action",
+    "backend.engine.decide_action", "engine.decide_action",
+    "backend.engine.core_loop", "engine.core_loop",
+    "backend.engine.trigger_event", "engine.trigger_event",
+    "backend.engine.mark_opportunity_recovered", "engine.mark_opportunity_recovered",
+    "backend.api.actions", "api.actions",
+}
+
+# The optimizer may write exactly one table.
+OPTIMIZER_WRITABLE_TABLES = {"recovery_candidates"}
+WRITE_STATEMENT = re.compile(
+    r"\b(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+[\"'`\[]?(\w+)",
+    re.IGNORECASE)
+
+
+def _optimizer_paths() -> list[Path]:
+    return [BACKEND_DIR / "engine" / name for name in OPTIMIZER_MODULES]
+
+
+@pytest.mark.gate("permanent.single_authority")
+def test_optimizer_modules_exist_where_the_authority_check_expects_them():
+    """If the optimizer is renamed or moved, the check below would silently
+    scan nothing and pass. This is what stops that."""
+    missing = [p.name for p in _optimizer_paths() if not p.exists()]
+    assert not missing, f"optimizer modules not found: {missing}"
+
+
+@pytest.mark.gate("permanent.single_authority")
+def test_optimizer_imports_nothing_with_execution_authority():
+    offenders = []
+    for path in _optimizer_paths():
+        tree = ast.parse(path.read_text(encoding="utf-8"), str(path))
+        rel = path.relative_to(PROJECT_ROOT).as_posix()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name in FORBIDDEN_AUTHORITY_MODULES:
+                        offenders.append(f"{rel}:{node.lineno}: import {alias.name}")
+            elif isinstance(node, ast.ImportFrom):
+                module = node.module or ""
+                if module in FORBIDDEN_AUTHORITY_MODULES:
+                    offenders.append(f"{rel}:{node.lineno}: from {module}")
+                for alias in node.names:
+                    if alias.name in FORBIDDEN_AUTHORITY_NAMES:
+                        offenders.append(
+                            f"{rel}:{node.lineno}: imports {alias.name}")
+            elif isinstance(node, ast.Name) and node.id in FORBIDDEN_AUTHORITY_NAMES:
+                offenders.append(f"{rel}:{node.lineno}: references {node.id}")
+            elif isinstance(node, ast.Attribute) and \
+                    node.attr in FORBIDDEN_AUTHORITY_NAMES:
+                offenders.append(f"{rel}:{node.lineno}: calls .{node.attr}")
+    assert not offenders, (
+        "the optimizer has a path to execution authority:\n" + "\n".join(offenders))
+
+
+@pytest.mark.gate("permanent.single_authority")
+def test_optimizer_writes_only_the_audit_table():
+    """recovery_candidates is a proposal/audit table with no execution
+    authority. A write to recovery_decisions, recovery_executions,
+    opportunities, payments or experiment_assignment from here would mean the
+    optimizer can move compliance, execution or business state."""
+    offenders = []
+    for path in _optimizer_paths():
+        text = path.read_text(encoding="utf-8")
+        rel = path.relative_to(PROJECT_ROOT).as_posix()
+        for lineno, line in enumerate(text.splitlines(), 1):
+            for _, table in WRITE_STATEMENT.findall(line):
+                if table.lower() not in OPTIMIZER_WRITABLE_TABLES:
+                    offenders.append(f"{rel}:{lineno}: writes {table}")
+        # also catch a write statement split across lines in a constant
+        for match in WRITE_STATEMENT.finditer(text):
+            if match.group(2).lower() not in OPTIMIZER_WRITABLE_TABLES:
+                offenders.append(f"{rel}: writes {match.group(2)}")
+    assert not offenders, (
+        "the optimizer writes outside its audit table:\n" + "\n".join(sorted(set(offenders))))
+
+
+@pytest.mark.gate("permanent.single_authority")
+def test_optimizer_never_grants_the_permission_bit():
+    """Belt-and-braces alongside test_only_the_rule_engine_grants_allowed:
+    that test scans every module, this one names the optimizer explicitly so
+    the failure message points straight at the boundary that was crossed."""
+    pattern = re.compile(r"""["']allowed["']\s*:\s*True|\ballowed\s*=\s*True""")
+    offenders = []
+    for path in _optimizer_paths():
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if line.strip().startswith("#"):
+                continue
+            if pattern.search(line):
+                offenders.append(
+                    f"{path.relative_to(PROJECT_ROOT).as_posix()}:{lineno}")
+    assert not offenders, (
+        "the optimizer granted the `allowed` permission bit:\n" + "\n".join(offenders))
+
+
+@pytest.mark.gate("permanent.single_authority")
+def test_optimizer_does_not_open_a_second_scoring_path():
+    """There is exactly one scoring path in the system: ml/inference.py. The
+    optimizer must not load a model artifact or call a predictor directly,
+    or training-time and serving-time behaviour could diverge again -- the
+    precise failure Phase 3's single-module design exists to prevent."""
+    forbidden = {"joblib", "predict", "predict_proba", "load_model",
+                 "build_feature_row", "XGBClassifier", "XGBRegressor"}
+    offenders = []
+    for path in _optimizer_paths():
+        tree = ast.parse(path.read_text(encoding="utf-8"), str(path))
+        rel = path.relative_to(PROJECT_ROOT).as_posix()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and node.attr in forbidden:
+                offenders.append(f"{rel}:{node.lineno}: .{node.attr}")
+            elif isinstance(node, ast.Name) and node.id in forbidden:
+                offenders.append(f"{rel}:{node.lineno}: {node.id}")
+            elif isinstance(node, (ast.Import, ast.ImportFrom)):
+                names = [a.name for a in node.names] + [getattr(node, "module", "") or ""]
+                for name in names:
+                    if name.split(".")[0] in forbidden:
+                        offenders.append(f"{rel}:{node.lineno}: imports {name}")
+    assert not offenders, (
+        "the optimizer opened a second scoring path:\n" + "\n".join(offenders))
+
+
+# --------------------------------------------------------------------------
 # Dataset provenance
 # --------------------------------------------------------------------------
 
