@@ -43,4 +43,13 @@ build/
 # Temporary files
 *.tmp
 *.bak
-data_factory
+
+# Data Factory: source (*.py), locked_thresholds.json, and the Phase 3
+# eval-set lock manifest (phase3_eval/phase3_eval_lock.json) ARE tracked --
+# they are the "locked before evaluation" artifacts the whole discipline
+# depends on. Only the fully-regenerable scratch output stays ignored
+# (large CSVs are already covered by the global *.csv rule above; these
+# entries additionally drop the regenerated JSON manifests in the two
+# directories that are wiped and rebuilt on every run).
+backend/data_factory/output/
+backend/data_factory/registry/

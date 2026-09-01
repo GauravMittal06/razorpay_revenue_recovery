@@ -1,0 +1,20 @@
+{
+  "generator_version": "data-factory-v1.0.0-phase2",
+  "model_type": "two XGBoost heads (classifier + regressor) over one shared ColumnTransformer feature contract (Decision I)",
+  "n_train_recovered_rows": 15373,
+  "n_train_rows": 17070,
+  "n_val_rows": 2974,
+  "random_state": 42,
+  "split_meta": {
+    "case_overlap": 0,
+    "customer_overlap_within_seen_pool": 171,
+    "train_cases": 1780,
+    "val_cases": 315
+  },
+  "trained_at_utc": "2026-09-01T18:12:47Z",
+  "training_artifact": "phase3_baseline_seed42_training_pool",
+  "training_artifact_sha256": "acf5f01cc07d08dc635974ee4f3beb8a9b9e6b21db59504b8390e8a281a3bba3",
+  "val_fraction": 0.15,
+  "val_roc_auc_sanity_only": 0.6447342054149664,
+  "wall_clock_seconds": 5.5
+}

@@ -1,0 +1,72 @@
+# FILE_INVENTORY.md
+
+- `test_everything.py` - stdlib-only end-to-end verification script (rebuild DB, run pipeline, live API checks, idempotency tests).
+- `gate_check.sh` - earlier bash-based automated acceptance-gate check script.
+- `backend/__init__.py` - marks `backend` as a Python package for the `backend.`-prefixed import convention.
+- `backend/requirements.txt` - pinned dependency manifest, reconstructed from the actual import graph; now also pins `scipy==1.17.1` explicitly since `data_factory/validators.py` imports `scipy.stats` directly.
+- `backend/.env` - contains `GEMINI_API_KEY`.
+- `backend/.gitignore` - excludes `.env`, `recovery.db`, training corpus CSV, `__pycache__`.
+- `backend/BOOTSTRAP_NOTES.md` - Phase 0 decision/rationale log.
+- `backend/PHASE1_NOTES.md` - Phase 1 decision/rationale log.
+- `backend/PHASE1_GATE_FIXES.md` - log of the two acceptance-gate gap fixes (uniqueness, idempotency).
+- `backend/PHASE2_NOTES.md` - Phase 2 decision/rationale log; includes two addenda from this session (gate-closure pass, ground-truth bucketing + merge-key bug fix).
+- `backend/api/__init__.py` - package marker.
+- `backend/api/server.py` - FastAPI app; route definitions.
+- `backend/api/queries.py` - read-side DB query functions backing the API (cases, metrics, audit feed).
+- `backend/api/actions.py` - write-side API wrappers delegating to engine functions.
+- `backend/data/__init__.py` - package marker.
+- `backend/data/generate_seed_data.py` - versioned, reproducible demo/seed dataset generator.
+- `backend/data/merchants.json` - generated seed data: merchants.
+- `backend/data/customers.json` - generated seed data: customers.
+- `backend/data/opportunities.json` - generated seed data: opportunities.
+- `backend/data/payments.json` - generated seed data: payment attempts.
+- `backend/db/__init__.py` - package marker.
+- `backend/db/db.py` - SQLite schema (DDL) + data loaders + connection helper.
+- `backend/db/recovery.db` - the SQLite database file itself (generated, gitignored).
+- `backend/engine/__init__.py` - package marker.
+- `backend/engine/classify.py` - rule-based root-cause classification.
+- `backend/engine/core_loop.py` - batch pipeline entrypoint, iterates open/recovering opportunities.
+- `backend/engine/decide_action.py` - compliance rule engine, sole action-selection authority.
+- `backend/engine/deliver_message.py` - wires LLM message generation into the pipeline post-decision.
+- `backend/engine/execute_action.py` - writes decision/execution rows, advances opportunity status.
+- `backend/engine/handle_customer_reply.py` - reply-triggered pipeline entrypoint.
+- `backend/engine/mark_opportunity_recovered.py` - records a real payment-success business outcome.
+- `backend/engine/trigger_event.py` - live single-event pipeline entrypoint, includes idempotency handling.
+- `backend/llm/__init__.py` - package marker.
+- `backend/llm/parse_intent.py` - Gemini-backed customer-reply intent extraction.
+- `backend/llm/generate_message.py` - Gemini-backed recovery message generation.
+- `backend/ml/__init__.py` - package marker.
+- `backend/ml/simulate_training_data.py` - generates the synthetic ML training corpus (live/original; see also the frozen copy under `data_factory/legacy/`).
+- `backend/ml/train_risk_model.py` - trains/retrains the risk-scoring models (not invoked in this project so far).
+- `backend/ml/verify_sensitivity.py` - calibration sanity checks on the training corpus.
+- `backend/ml/data/training_corpus.csv` - generated ML training corpus (gitignored).
+- `backend/ml/models/lr_model.joblib` - pre-trained logistic regression risk model (legacy, unchanged).
+- `backend/ml/models/xgb_model.joblib` - pre-trained XGBoost risk model (legacy, unchanged).
+- `backend/ml/bank_health_setup.py` - Phase 3: re-derives the baseline-seed-42 network-health series (deterministic) and loads it into `bank_health_observations` (Decision B2). Does not modify Phase 2.
+- `backend/ml/outcome_features.py` - Phase 3: THE one feature-construction module (context+candidate -> feature row), `read_joint_csv()` (correct "n/a"-safe CSV read), `NetworkHealthLookup` (O(1) trailing-window network-health, verified against the `network_health_rolling` reference). Imported by both train and inference.
+- `backend/ml/inference.py` - Phase 3: the single joint-model load + score path (`score_candidate` / `score_do_nothing`). No execution authority; does not touch `decide_action.py`'s legacy loader. Flagged-null on malformed input.
+- `backend/ml/train_outcome_model.py` - Phase 3: trains the two XGBoost heads (p_recovery on `recovered`; E[amount|recovered] on recovered rows) over one shared ColumnTransformer; hash-verifies the training pool first; writes `models/outcome_model.joblib` + `outcome_model_manifest.json`. `fit_outcome_model()` is reused by the multi-seed gate.
+- `backend/ml/evaluate_outcome_model.py` - Phase 3 evaluation harness and the project's only Phase 3 test entry point (there is no separate `tests/` file for Phase 3 — every gate is a check inside this script, run via `python -m backend.ml.evaluate_outcome_model`, exit 0 only if all checks pass). Eight gate groups: `phase3_calibration`, `phase3_treatment_effect`, `phase3_cross_profile` (ranking-transfer form, per the 2026-09-01 amendment, plus a printed known-limitation line for stress calibration level), `phase3_temporal` (calibration + ranking-direction), `phase3_multiseed` (refits seeds 43/44 and re-runs the per-seed gates), `phase3_parity` (batch path vs `ml/inference.py`, exact-match), failure-behaviour (malformed inputs must return a flagged null), and a static authority-boundary check on `ml/inference.py` + `ml/outcome_features.py`. Also holds `MULTISEED_WAIVERS` — the one disclosed seed-43 treatment-effect waiver, applied at the report layer only and printed loudly on every run; it fires only when the named bucket is the sole direction miss, so it can never mask a second failure. Reuses `data_factory.validators._root_cause_effect_class` for bucketing.
+- `backend/ml/models/outcome_model.joblib` - Phase 3 joint outcome model artifact: a dict of `{p_pipeline, amount_pipeline, feature_columns, categorical_features, numeric_features}` (gitignored via `*.joblib`; regenerate with `python -m backend.ml.train_outcome_model`).
+- `backend/ml/models/outcome_model_manifest.json` - Phase 3 model provenance: training-pool sha256, train/model-selection-val split composition, generator version, random_state, and the val ROC-AUC sanity metric (not a gate).
+- `backend/PHASE3_NOTES.md` - Phase 3 decision/rationale log: clean-install verification, the `.gitignore` fix, 4-way split semantics, the two data-correctness bugs found pre-training ("n/a" read as NaN; `nan or default`), the two eval-validity fixes, the generator-cell feature adoption, the two independent-review decisions (seed-43 waiver, cross-profile amendment), the deliberately-unresolved items, and the final exit gate table.
+- `backend/logs/.gitkeep` - keeps the empty logs directory tracked.
+- `backend/data_factory/__init__.py` - package marker.
+- `backend/data_factory/entities.py` - persistent synthetic merchants/customers/bank channels; `SyntheticWorld` container.
+- `backend/data_factory/bank_health_timeseries.py` - time-varying `(bank, method, psp)` health series generation + lookup index.
+- `backend/data_factory/candidate_generation.py` - shared candidate eligibility/pruning module, zero execution authority, reusable by Phase 4's live optimizer unmodified.
+- `backend/data_factory/outcome_model.py` - single shared stochastic potential-outcome function used for every candidate.
+- `backend/data_factory/candidate_outcome_dataset.py` - orchestrates the joint candidate-outcome dataset generation for one run.
+- `backend/data_factory/calibration_profiles.py` - `baseline`/`stress` calibration profile definitions, same code path.
+- `backend/data_factory/dataset_registry.py` - writes JSON manifest + optional DB-table row per generation run.
+- `backend/data_factory/validators.py` - every Phase 2 validator: leakage (case/customer/temporal), reproducibility, ground-truth treatment-effect (granular bucketing + merge-key-safe + effect-size gate), fatigue significance, candidate timing validity, distributional sanity, directional relationship, calibration profile divergence, static no-execution-authority check, and 7 per-validator corruption self-tests.
+- `backend/data_factory/eval_set_lock.py` - Phase 2 temporal-holdout lock (`lock_eval_set`/`verify_eval_set`, unchanged) + Phase 3 additions (`carve_phase3_splits` 4-way split, `lock_phase3_artifact`/`verify_phase3_artifact`/`verify_all_phase3` against `phase3_eval/phase3_eval_lock.json`).
+- `backend/data_factory/phase3_eval_setup.py` - Phase 3 setup: regenerates baseline seeds 42/43/44 + stress seed 42, carves the 4-way split, hash-commits every frozen Phase 3 eval artifact.
+- `backend/data_factory/phase3_eval/` - the frozen, hash-committed Phase 3 eval artifacts. 11 CSVs (gitignored via `*.csv`, regenerate with `python -m backend.data_factory.phase3_eval_setup`): baseline seed-42 joint + truth + its three carved slices (`training_pool` 2095 cases / `calibration_holdout` 455 / `temporal_holdout` 450), stress seed-42 joint + truth (the cross-profile holdout), and baseline seed-43 / seed-44 joint + truth (multi-seed). Deliberately NOT under `output/`, which `phase2_verify.py` wipes on every run.
+- `backend/data_factory/phase3_eval/phase3_eval_lock.json` - the Phase 3 lock manifest (tracked in git): one sha256 + row/case counts + role per frozen artifact. `eval_set_lock.verify_all_phase3()` re-checks every hash, and training/evaluation abort on any mismatch before touching a file.
+- `backend/data_factory/run_generation.py` - CLI entrypoint: generates both calibration profiles, runs every validator, exports CSVs, registers both runs.
+- `backend/data_factory/locked_thresholds.json` - every locked statistical tolerance and eval-set boundary, each timestamped. Contains the Phase 2 blocks (unchanged) plus seven Phase 3 blocks: `phase3_data_split`, `phase3_calibration`, `phase3_treatment_effect`, `phase3_cross_profile`, `phase3_temporal`, `phase3_multiseed`, `phase3_parity`. Three dated `_amendment_locked_at_utc` entries, each with its reasoning recorded in-file: (1) `phase3_treatment_effect` — evaluation population set to `training_pool ∪ calibration_holdout` (filled an underspecified lock before first use); (2) `phase3_temporal` — `ranking_pair_definition` corrected to compare like-for-like probability-space treatment effects (the original compared a probability effect against a rupee expected value; the 0.85 bar was NOT changed); (3) `phase3_cross_profile` — **gate redefined from a raw-ECE bound to a ranking-transfer criterion** (stress ROC-AUC must not degrade from in-profile by more than 0.05 absolute, floor 0.55), with raw stress calibration level demoted to a reported-not-gated known limitation; the original 0.10/0.07 bounds are retained in the file for the record. No numeric tolerance was ever loosened to obtain a passing result.
+- `backend/data_factory/legacy/__init__.py` - package marker.
+- `backend/data_factory/legacy/simulate_training_data_frozen.py` - byte-for-byte frozen copy of the original ML training-corpus generator, for shipped-model reproducibility.
+- `backend/data_factory/output/` - generated per-run CSVs (joint dataset, ground-truth companion, temporal holdout) + `eval_set_manifest.json` (gitignore-worthy).
+- `backend/data_factory/registry/` - generated per-run JSON manifests from `dataset_registry.py` (gitignore-worthy).
