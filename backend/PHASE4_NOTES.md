@@ -3,18 +3,29 @@
 Read with `SoT.md`, `EXECUTION_PLAN.md`, `STATE_AND_DECISIONS.md`,
 `FILE_INVENTORY.md`, `backend/PHASE3_HANDOFF.md`.
 
-## 1. Status: CONDITIONALLY CLEARED — 12 of 14 Phase 4 gates pass
+## 1. Status: CONDITIONALLY CLEARED — 13 of 14 Phase 4 gates pass
 
-83 of 85 Phase 4 tests pass. Two gates fail, both disclosed below with raw
-numbers and both reproducible from the suite. **No threshold was moved to
-obtain a pass.** The two failing bars (`LATENCY_BUDGET_MS = 250.0`, ranking
-agreement `0.90`) were declared before measurement — the latency budget in
-the approved plan and in `optimizer_config.py`; the agreement bar taken from
-Phase 3's own locked treatment-effect direction bar rather than chosen here.
+**One outstanding disclosed gap: G10 (latency).** No threshold was moved to
+obtain a pass; `LATENCY_BUDGET_MS = 250.0` was declared before measurement
+and stands unchanged at a measured p95 of ~858 ms (§7).
+
+**G7 (ranking correctness) PASSES at 0.966 / 0.967** on frozen seed-42 and
+seed-43 Phase 3 data, well above the 0.90 bar. An earlier revision of this
+document recorded G7 as FAILING at 0.389 with a `payment_link`/`escalate`
+diagnosis; **that finding is RETRACTED as a measurement error in Phase 4's
+own test** — see §8.0. It was not a model defect.
+
+One genuinely new model property was found in the course of that
+investigation and is disclosed in §8.6: the amount head varies
+`E[amount|recovered]` with the candidate, which the generator does not,
+perturbing ~16% of live pair orderings. **Known, not fixed, carried
+forward** — not blocking Phase 4.
 
 Full-suite position: **217 passed, 16 failed**. Fourteen of those sixteen are
 pre-existing failures, present identically in the main checkout before any
-Phase 4 work (verified by running the suite there first). Phase 4 added two.
+Phase 4 work (verified by running the suite there first). Of the two Phase 4
+failures, one is G10; the other is the G7 test, which still encodes the
+retracted methodology and is a known-failing test with a known cause (§8.3).
 
 ## 2. What Phase 4 delivered
 
@@ -185,48 +196,176 @@ scope and is recommended as a Phase 5/Phase 9 item.
 
 The budget was **not** moved to obtain a pass.
 
-## 8. FAILING GATE 2 — ranking correctness against ground truth
+## 8. GATE 2 — ranking correctness: PASSES. Original finding RETRACTED.
 
-Direction agreement at ground-truth gap ≥ 0.12, bar 0.90 (Phase 3's lock):
+### 8.0 RETRACTION
 
-| Scenario | Agreement | Decisive pairs |
+**An earlier version of this section reported a ranking-correctness FAILURE
+(`network_error` 0.389, `gateway_timeout` 0.800) and diagnosed it as the
+model "over-valuing `payment_link` and under-valuing `escalate`" on
+transient root causes. Both claims are RETRACTED. They were a measurement
+error in Phase 4's own test, not a model defect, and the diagnosis had the
+direction backwards.**
+
+Two compounding faults in the original G7 implementation:
+
+1. **Wrong comparison space.** It compared the generator's analytic
+   *probability* against the model's *rupee* incremental amount. Phase 3's
+   2026-09-01 temporal amendment had already identified exactly this
+   mis-specification and corrected its own gate to compare like-for-like
+   probability-space effects. Phase 4 reintroduced the error the amendment
+   removed.
+2. **Off-distribution contexts.** It measured on hand-constructed contexts
+   rather than real generated cases, which pushed the amount head roughly
+   8× further off-distribution than it ever goes on live data (§8.5).
+
+The retracted numbers came from those two faults acting together, not from
+the model.
+
+### 8.1 The real result, on Phase 3's frozen data
+
+Re-measured against the generator's **recorded `analytic_p`** — real ground
+truth, no reconstruction — on the frozen, hash-verified Phase 3 artifacts,
+scored through Phase 3's own batch path. Direction agreement at
+ground-truth gap ≥ 0.12:
+
+| Source | Decisive pairs | Agreement |
 |---|---|---|
-| `payment_failed`/`expired_card` (method-eligible) | **1.000** | 24 |
-| `payment_failed`/`insufficient_funds` | **0.950** | 20 |
-| `payment_failed`/`authentication_failed` (method-eligible) | 0.833 | 24 |
-| `payment_failed`/`gateway_timeout` | 0.800 | 10 |
-| `payment_failed`/`network_error` | **0.389** | 18 |
-| `payment_failed`/`payment_declined` | no decisive pairs | 0 |
-| `checkout_abandoned` | no decisive pairs | 0 |
-| `invoice_overdue` | no decisive pairs | 0 |
+| seed 42 temporal holdout (unseen) | 1,084 | **0.966** |
+| seed 43 joint (the disclosed-gap seed) | 6,451 | **0.967** |
+| — `network_error` (seed 43) | 82 | **0.988** |
+| — `gateway_timeout` (seed 43) | 73 | **0.986** |
+| — `expired_card` (seed 43) | 1,337 | 0.966 |
+| — `authentication_failed` (seed 43) | 1,180 | 0.965 |
 
-**Attribution matters here.** Phase 4 owns "the optimizer ranks faithfully by
-EIV" — asserted separately by
-`test_the_optimizer_ranks_faithfully_by_eiv`, and it **passes**: the emitted
+`network_error` is **0.988**, not 0.389. **G7 PASSES**, comfortably above the
+0.90 bar on both seeds.
+
+The per-action rank bias on frozen data also runs **opposite** to the
+retracted diagnosis (negative = model ranks the action *higher* than truth
+does; seed 43):
+
+| root_cause | do_nothing | retry | reminder | payment_link | escalate |
+|---|---|---|---|---|---|
+| `authentication_failed` | +0.25 | −1.92 | +1.66 | **+1.05** | **−5.65** |
+| `gateway_timeout` | +0.26 | +0.20 | −0.40 | **+0.87** | **−2.45** |
+| `network_error` | +0.63 | +0.04 | +1.14 | **−1.30** | −0.10 |
+
+`escalate` is ranked consistently *higher* than truth and `payment_link`
+mostly *lower* — the reverse of what was originally reported.
+
+At population scale there is essentially nothing to attribute: at gap ≥ 0.12
+`network_error` produced **1 disagreeing pair out of 82** and
+`gateway_timeout` 1 of 73. The retracted diagnosis rested on a single
+hand-constructed context.
+
+### 8.2 Isolation — which fault caused what
+
+Same contexts and same ground truth, varying only the comparison axis:
+
+| | probability space | rupee space |
+|---|---|---|
+| Frozen eval data | 0.966 (n=1084) | 0.940 (n=1084) |
+| Constructed contexts (original G7) | 0.958 (n=96) | **0.812** (n=96) |
+| — `network_error` | **1.000** (n=18) | **0.389** (n=18) |
+
+The ground-truth reconstruction was **not** the problem — constructed
+contexts scored 0.958 in probability space, close to the frozen 0.966. The
+**comparison space** was.
+
+### 8.3 Test-suite status — HONEST DISCREPANCY, recorded not hidden
+
+`test_higher_true_incremental_value_ranks_above_lower` in
+`backend/tests/test_phase4_optimizer.py` **still encodes the flawed
+methodology and therefore still fails**. It was deliberately left untouched:
+correcting it is a code change, and the review that produced this retraction
+scoped this pass to documentation only.
+
+So the suite and this document disagree by design. The gate table's G7 =
+PASS is supported by the frozen-data evidence in §8.1, **not** by the
+automated test as currently written. **Open obligation:** re-implement that
+test to compare probability-space against probability-space (and, separately,
+to assert the rupee-space axis with the §8.5 sensitivity acknowledged),
+running it against frozen eval cases rather than constructed contexts.
+Until then it is a known-failing test with a known cause.
+
+### 8.4 Attribution, unchanged
+
+Phase 4 owns "the optimizer ranks faithfully by EIV" — asserted by
+`test_the_optimizer_ranks_faithfully_by_eiv`, which **passes**: the emitted
 order is exactly descending EIV with a deterministic tiebreak, on every
-opportunity. This gate measures the **Phase 3 artifact's** ordering quality
-as surfaced through the optimizer. The failure is evidence about the model,
-not about the ranking machinery.
+opportunity.
 
-### 8.1 Diagnosis of the `network_error` outlier
+### 8.5 Why the constructed contexts broke it
 
-Not left as an undiagnosed mystery. On transient root causes the generator's
-ordering is `retry (1.1) > escalate (0.35) > reminder (0.2) > payment_link
-(0.05)`. The model's estimated incremental amounts on `network_error`:
+The mechanism behind the retraction: the model's amount head varies
+`E[amount|recovered]` with the candidate, which the generator does not. On
+the hand-constructed contexts the original G7 used, that variation ran ~8×
+its live magnitude (0.191 vs 0.023 median within-case spread), which is what
+turned a correct probability ordering into a 0.389 rupee ordering. Full
+disclosure entry follows in §8.6.
 
-    action        analytic_p    model_incremental_₹
-    retry          0.9652              5222.9
-    payment_link   0.9067              5265.4     <- over-valued
-    reminder       0.9186              2893.3
-    escalate       0.9291              1373.7     <- under-valued
+### 8.6 NEW DISCLOSURE — candidate-dependent `E[amount|recovered]` head
 
-**The model over-values `payment_link` — analytically near-identical to
-`do_nothing` on a transient failure — and under-values `escalate`, which the
-generator places second.** The same pattern is visible on `gateway_timeout`.
-This is a specific, localised model weakness in the transient root-cause
-class, and it is the direct cause of the sub-bar agreement.
+**Status: KNOWN, NOT FIXED, CARRIED FORWARD. Not blocking Phase 4.**
+Candidate for a scoped Phase 3 model revision later. Deliberately not fixed
+here: changing the amount head is Phase 3 model surgery and would require
+retraining and re-running Phase 3's gates — the same scope reasoning that
+keeps the G10 latency fix out of Phase 4.
 
-### 8.2 Why several scenarios have no decisive pairs — the operating-point finding
+**Mechanism.** `expected_recovered_amount = p_recovery x E[amount|recovered]`.
+In the generator, `draw_outcome()` draws the recovered fraction from
+`rng.beta(*profile.partial_recovery_fraction_beta)` with probability
+`profile.partial_recovery_probability` — **neither depends on action_type,
+timing, method or channel**. Ground truth therefore says
+`E[amount|recovered]` is *candidate-independent* within a case. The model's
+amount head varies it with the candidate anyway, because the candidate tuple
+is in its feature row. That variation is spurious, and because EIV is
+computed in rupee space it can invert an ordering the probability head gets
+right.
+
+**Measured impact.**
+
+Within-case `(max − min) / mean` of predicted `E[amount|recovered]`
+(ground truth: should be ~0):
+
+| Population | p50 | p90 | max | n |
+|---|---|---|---|---|
+| Frozen eval cases | 0.026 | 0.081 | 1.105 | 426 |
+| **Live opportunities (optimizer path)** | **0.023** | 0.064 | 1.060 | 120 |
+| Constructed contexts (original G7) | **0.191** | 0.583 | 0.747 | 16 |
+
+Ordering impact:
+
+- **Live opportunities: 997 of 6,140 candidate pairs (16.2%)** have a
+  rupee-space ordering that disagrees with the probability-space ordering.
+- **Frozen eval data: 32 of 1,047 (3.1%)** of pairs the probability head
+  orders *correctly* are flipped to wrong by the amount head.
+- Mean predicted `E[amount|recovered]` normalised by case mean shows no
+  systematic action-type bias — `do_nothing` 1.0033, `retry` 1.0043,
+  `reminder` 1.0005, `payment_link` 0.9987, `escalate` 0.9936. The effect is
+  per-case noise, not a per-action tilt.
+
+**Why the live spread is small but the pair impact is not.** The within-case
+spread on live data is only ~2%, but baseline recovery probability sits at
+p50 = 0.909 (§8.7), so most candidate pairs are separated by very little in
+probability. A 2% wobble in the amount term is then large enough to decide
+the ordering. This finding and the saturation finding compound each other.
+
+**Why this was never caught before.** Phase 3's 2026-09-01 temporal
+amendment moved its ranking gate *into* probability space — correctly, for
+measuring the probability head. The consequence is that **the rupee-space
+ordering has never been gated anywhere**, and rupee space is exactly where
+Phase 4's EIV lives. This is not a restatement of the recorded
+shrinkage/near-tie weakness; it is an unmeasured property sitting in a gap
+those gates were amended not to cover.
+
+**What breaks if ignored.** Any downstream consumer that treats the
+rupee-space EIV ordering as more authoritative than the underlying
+probability signal would be relying on a ~16%-perturbed ordering without
+knowing it.
+
+### 8.7 Why several scenarios have no decisive pairs — the operating-point finding
 
 This is the most significant finding of the phase, and it corroborates the
 carried-forward Phase 3 requirement rather than contradicting it.
@@ -263,7 +402,7 @@ Agreement-vs-gap curve at Phase 4's operating point, against Phase 3's:
 Agreement rises with gap size, reproducing Phase 3's monotone shape, but sits
 below Phase 3's curve at every band.
 
-### 8.3 Null result — the network-health hypothesis was tested and REFUTED
+### 8.8 Null result — the network-health hypothesis was tested and REFUTED
 
 The obvious explanation for §8.2 was the A7 network-health gap. It was tested
 directly by re-running the whole curve with `bank`/`psp`/`decision_time_hours`
@@ -282,7 +421,7 @@ is a real capability limitation but is **not** the cause of the ranking
 shortfall. Root cause of the gap between Phase 4's and Phase 3's curves
 remains **undiagnosed** beyond §8.1's transient-class finding.
 
-### 8.4 Limitation of this measurement itself
+### 8.9 Limitation of the constructed-context measurement
 
 Stated plainly so a reviewer can weigh it. Phase 3 measured agreement on its
 frozen eval corpus, where each row carries the generator's actual sampled
@@ -372,7 +511,7 @@ overstate the model's demonstrated resolution.
 | G4 `do_nothing` genuinely competitive | **PASS** — ranks first on 4/120 |
 | G5 candidate ceiling declared + enforced | **PASS** — exhaustive sweep; `raise`, not `assert` |
 | G6 single shared baseline, one scoring path | **PASS** |
-| G7 ranking correctness vs ground truth | **FAIL** — 2 of 5 covered scenarios at/above bar; §8 |
+| G7 ranking correctness vs ground truth | **PASS** — 0.966 (seed 42, n=1084) / 0.967 (seed 43, n=6451) on frozen data, vs a 0.90 bar. Original 0.389 FAIL retracted as a Phase 4 test-methodology error; the automated test still encodes it and is known-failing (§8.0, §8.3) |
 | G8 auditability, full considered set persisted | **PASS** |
 | G9 method change scoreable, not executable | **PASS** |
 | G10 latency within declared budget | **FAIL** — p95 858 ms vs 250 ms; §7 |
@@ -383,12 +522,30 @@ overstate the model's demonstrated resolution.
 
 ## 13. Integrity statement
 
-No threshold was loosened anywhere in Phase 4 to obtain a pass. Both failing
-gates retain the bars declared before measurement. One hypothesis (§8.3) was
-tested and refuted, and the refutation is recorded rather than dropped. One
-self-inconsistency (§4, cost prose vs table) and one measurement defect
-(§8.4, omitted `fatigue_term`) were found and corrected, and both are
-recorded rather than silently amended. The flagged-combination list was
-widened, not narrowed.
+No threshold was loosened anywhere in Phase 4 to obtain a pass. The one
+outstanding gate (G10 latency) retains the bar declared before measurement.
+
+**G7's status changed from FAIL to PASS on evidence, not on a moved bar.**
+The 0.90 agreement bar is unchanged; what changed is that the measurement
+was found to be wrong and was redone correctly, against the generator's
+recorded `analytic_p` on frozen, hash-verified Phase 3 artifacts. The
+retracted numbers, the reason they were wrong, and the fact that the
+automated test still encodes the flawed methodology are all recorded in
+§8.0–§8.3 rather than deleted. A reader can reconstruct exactly what was
+claimed, why it was wrong, and what replaced it.
+
+Corrections and null results recorded rather than silently amended:
+
+- §8.0 — G7's 0.389 finding and its `payment_link`/`escalate` diagnosis,
+  **retracted**; the diagnosis had the direction backwards.
+- §8.8 — the network-health hypothesis for the ranking gap, **tested and
+  refuted** (0.587 → 0.571).
+- §4 — cost prose contradicted its own table; prose corrected, test added.
+- §8.9 — the constructed-context measurement omitted `fatigue_term` in its
+  first version.
+- §5 — the flagged-combination list was widened, not narrowed.
+
+One new model property was found and is disclosed as **known, not fixed**
+(§8.6) rather than being folded into a passing result.
 
 **Phase 4 sign-off is a separate step and has not been granted.**
