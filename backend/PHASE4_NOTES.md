@@ -145,7 +145,17 @@ frozen. Option (i) was implemented and **did not prove fragile**:
 No eligibility rule is duplicated in Phase 4. The fallback to option (ii)
 was not needed.
 
-## 7. FAILING GATE 1 — latency (declared 250 ms, measured p95 ≈ 860 ms)
+## 7. FAILING GATE 1 — latency: BUDGET NOT YET MET
+
+**Status: the declared 250 ms budget is NOT MET and was NOT fixed in Phase 4.**
+Accepted as a disclosed, carried-forward item on review, because the fix
+requires modifying frozen `ml/inference.py` and re-running Phase 3's
+train/serve parity gate — out of Phase 4 scope. It remains an open
+obligation, not a closed one: any later claim that the optimizer is
+"live/demo-ready on latency" is unsupported until this gate passes.
+Owner: Phase 5 or Phase 9.
+
+### Measured (declared 250 ms, p95 ≈ 860 ms)
 
     warm, 12 opportunities, at the enforced candidate ceiling
     p50 = 757.6 ms      p95 = 858.1 ms      budget = 250.0 ms   FAIL
