@@ -141,6 +141,17 @@ CREATE TABLE IF NOT EXISTS recovery_candidates (
     pruned_stage TEXT,
     selected INTEGER,               -- 0/1
     created_at INTEGER,
+    -- Phase 4: the carried-forward Phase 3 near-tie disclosure. DISPLAY AND
+    -- DOWNSTREAM-CONSUMPTION ONLY -- written after ranking is complete and
+    -- never read back by the ranking code, which is a pure function of
+    -- predicted_eiv. Present so the Control Tower can distinguish "this
+    -- candidate clearly leads" from "these top candidates are within noise
+    -- of each other" (Phase 3 hand-off section 3).
+    eiv_confidence TEXT,            -- 'high' | 'low' | NULL for unscored rows
+    eiv_confidence_reason TEXT,     -- 'near_tie' | 'phase3_flagged_bucket' |
+                                    -- both, '+'-joined | NULL
+    eiv_gap_to_next REAL,           -- EIV gap to the next-ranked scored
+                                    -- candidate; NULL for the last-ranked row
     FOREIGN KEY (opportunity_id) REFERENCES opportunities(opportunity_id)
 );
 
