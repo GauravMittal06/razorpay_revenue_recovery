@@ -27,23 +27,23 @@ app.add_middleware(
 @app.get("/api/cases")
 def list_cases(
     event_type: str | None = Query(None),
-    recovery_status: str | None = Query(None),
+    status: str | None = Query(None),
     outcome: str | None = Query(None),
 ):
     conn = get_connection()
     try:
-        return get_cases(conn, event_type, recovery_status, outcome)
+        return get_cases(conn, event_type, status, outcome)
     finally:
         conn.close()
 
 
-@app.get("/api/cases/{payment_id}")
-def case_detail(payment_id: str):
+@app.get("/api/cases/{opportunity_id}")
+def case_detail(opportunity_id: str):
     conn = get_connection()
     try:
-        result = get_case_detail(conn, payment_id)
+        result = get_case_detail(conn, opportunity_id)
         if result is None:
-            raise HTTPException(status_code=404, detail="payment not found")
+            raise HTTPException(status_code=404, detail="opportunity not found")
         return result
     finally:
         conn.close()
@@ -64,6 +64,7 @@ class TriggerEventBody(BaseModel):
     root_cause: Optional[str] = None
     customer_id: Optional[str] = None
     days_overdue: Optional[int] = None
+    event_id: Optional[str] = None  # upstream idempotency key; omit if none available
 
 
 @app.post("/api/events/trigger")
@@ -77,8 +78,12 @@ def api_trigger_event(body: TriggerEventBody):
             root_cause=body.root_cause,
             customer_id=body.customer_id,
             days_overdue=body.days_overdue,
+            event_id=body.event_id,
         )
-        if result["status"] != "ok":
+        # duplicate_event_ignored is a successful idempotent-replay outcome,
+        # not an error -- the caller's event was already ingested and no
+        # duplicate opportunity was created, exactly as intended.
+        if result["status"] not in ("ok", "duplicate_event_ignored"):
             raise HTTPException(status_code=400, detail=result.get("error", result["status"]))
         return result
     finally:
@@ -89,25 +94,29 @@ class ReplyBody(BaseModel):
     message: str
 
 
-@app.post("/api/cases/{payment_id}/reply")
-def api_submit_reply(payment_id: str, body: ReplyBody):
+@app.post("/api/cases/{opportunity_id}/reply")
+def api_submit_reply(opportunity_id: str, body: ReplyBody):
     conn = get_connection()
     try:
-        result = submit_reply(payment_id, body.message, conn)
-        if result.get("status") == "payment_not_found":
-            raise HTTPException(status_code=404, detail=result.get("error", "payment not found"))
+        result = submit_reply(opportunity_id, body.message, conn)
+        if result.get("status") == "opportunity_not_found":
+            raise HTTPException(status_code=404, detail=result.get("error", "opportunity not found"))
         return result
     finally:
         conn.close()
 
 
-@app.post("/api/cases/{payment_id}/simulate-recovery")
-def api_simulate_recovery(payment_id: str):
+class SimulateRecoveryBody(BaseModel):
+    partial_recovery_amount: Optional[int] = None
+
+
+@app.post("/api/cases/{opportunity_id}/simulate-recovery")
+def api_simulate_recovery(opportunity_id: str, body: SimulateRecoveryBody = SimulateRecoveryBody()):
     conn = get_connection()
     try:
-        result = simulate_recovery(payment_id, conn)
-        if result.get("status") == "payment_not_found":
-            raise HTTPException(status_code=404, detail="payment not found")
+        result = simulate_recovery(opportunity_id, conn, partial_recovery_amount=body.partial_recovery_amount)
+        if result.get("status") == "opportunity_not_found":
+            raise HTTPException(status_code=404, detail="opportunity not found")
         return result
     finally:
         conn.close()

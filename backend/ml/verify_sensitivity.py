@@ -7,9 +7,12 @@ Checks:
 3. Basic outcome distribution sanity by candidate_action
 """
 
+from pathlib import Path
 import pandas as pd
 
-CORPUS_PATH = "backend/ml/data/training_corpus.csv"
+# Anchored on this file's location, not on the caller's cwd (see
+# simulate_training_data.py for the same fix and rationale).
+CORPUS_PATH = Path(__file__).resolve().parent / "data" / "training_corpus.csv"
 
 
 def main():

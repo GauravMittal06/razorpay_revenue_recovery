@@ -1,0 +1,422 @@
+[
+  {
+    "customer_id": "cust_3519aa583573",
+    "name": "Aryan Maharaj",
+    "payment_history_score": 0.64,
+    "past_recovery_rate": 0.03,
+    "preferred_channel": "sms"
+  },
+  {
+    "customer_id": "cust_a47b2785fe52",
+    "name": "Udant Dewan",
+    "payment_history_score": 0.24,
+    "past_recovery_rate": 0.14,
+    "preferred_channel": "email"
+  },
+  {
+    "customer_id": "cust_01035756cfeb",
+    "name": "Gagan Sami",
+    "payment_history_score": 0.68,
+    "past_recovery_rate": 0.89,
+    "preferred_channel": "email"
+  },
+  {
+    "customer_id": "cust_68a364c85fd0",
+    "name": "Ayushman Chander",
+    "payment_history_score": 0.59,
+    "past_recovery_rate": 0.03,
+    "preferred_channel": "email"
+  },
+  {
+    "customer_id": "cust_3271adae05b6",
+    "name": "Viraj Tiwari",
+    "payment_history_score": 0.22,
+    "past_recovery_rate": 0.51,
+    "preferred_channel": "email"
+  },
+  {
+    "customer_id": "cust_6c31025211d2",
+    "name": "Rushil Saini",
+    "payment_history_score": 0.56,
+    "past_recovery_rate": 0.72,
+    "preferred_channel": "whatsapp"
+  },
+  {
+    "customer_id": "cust_38d78ac2325e",
+    "name": "Saumya Mall",
+    "payment_history_score": 0.54,
+    "past_recovery_rate": 0.22,
+    "preferred_channel": "whatsapp"
+  },
+  {
+    "customer_id": "cust_dd08e788912f",
+    "name": "Nathaniel Sami",
+    "payment_history_score": 0.28,
+    "past_recovery_rate": 0.87,
+    "preferred_channel": "email"
+  },
+  {
+    "customer_id": "cust_396b6fee3100",
+    "name": "Arunima Dugal",
+    "payment_history_score": 0.7,
+    "past_recovery_rate": 0.34,
+    "preferred_channel": "email"
+  },
+  {
+    "customer_id": "cust_ce3aea626a5e",
+    "name": "Gayathri Chaudry",
+    "payment_history_score": 0.22,
+    "past_recovery_rate": 0.76,
+    "preferred_channel": "email"
+  },
+  {
+    "customer_id": "cust_86a4c810654d",
+    "name": "Lajita Chatterjee",
+    "payment_history_score": 0.09,
+    "past_recovery_rate": 0.1,
+    "preferred_channel": "sms"
+  },
+  {
+    "customer_id": "cust_55b8c4d10fb4",
+    "name": "Hemangini Lalla",
+    "payment_history_score": 0.6,
+    "past_recovery_rate": 0.81,
+    "preferred_channel": "whatsapp"
+  },
+  {
+    "customer_id": "cust_b70c141577a3",
+    "name": "Tripti Yadav",
+    "payment_history_score": 0.46,
+    "past_recovery_rate": 0.12,
+    "preferred_channel": "sms"
+  },
+  {
+    "customer_id": "cust_d6799e7f4354",
+    "name": "Kritika Brar",
+    "payment_history_score": 0.08,
+    "past_recovery_rate": 0.29,
+    "preferred_channel": "whatsapp"
+  },
+  {
+    "customer_id": "cust_d15324a02571",
+    "name": "Janaki Handa",
+    "payment_history_score": 0.62,
+    "past_recovery_rate": 0.86,
+    "preferred_channel": "whatsapp"
+  },
+  {
+    "customer_id": "cust_6a1bcd77398e",
+    "name": "Chakradev Kari",
+    "payment_history_score": 0.19,
+    "past_recovery_rate": 0.07,
+    "preferred_channel": "whatsapp"
+  },
+  {
+    "customer_id": "cust_c88237978565",
+    "name": "Fariq Kaul",
+    "payment_history_score": 0.23,
+    "past_recovery_rate": 0.29,
+    "preferred_channel": "email"
+  },
+  {
+    "customer_id": "cust_64a2d77c334c",
+    "name": "Lajita Mall",
+    "payment_history_score": 0.86,
+    "past_recovery_rate": 0.87,
+    "preferred_channel": "sms"
+  },
+  {
+    "customer_id": "cust_d1716714dabe",
+    "name": "Janya Gaba",
+    "payment_history_score": 0.28,
+    "past_recovery_rate": 0.64,
+    "preferred_channel": "sms"
+  },
+  {
+    "customer_id": "cust_92c4744d0061",
+    "name": "Isha Kadakia",
+    "payment_history_score": 0.16,
+    "past_recovery_rate": 0.36,
+    "preferred_channel": "whatsapp"
+  },
+  {
+    "customer_id": "cust_23f8de64e040",
+    "name": "Ekbal Garg",
+    "payment_history_score": 0.27,
+    "past_recovery_rate": 0.94,
+    "preferred_channel": "whatsapp"
+  },
+  {
+    "customer_id": "cust_424b02225b34",
+    "name": "Nihal Shere",
+    "payment_history_score": 0.07,
+    "past_recovery_rate": 0.63,
+    "preferred_channel": "whatsapp"
+  },
+  {
+    "customer_id": "cust_b1ec609417ff",
+    "name": "Anamika Kanda",
+    "payment_history_score": 0.73,
+    "past_recovery_rate": 0.16,
+    "preferred_channel": "sms"
+  },
+  {
+    "customer_id": "cust_b86fd9519bb7",
+    "name": "Daksh Karnik",
+    "payment_history_score": 0.27,
+    "past_recovery_rate": 0.93,
+    "preferred_channel": "whatsapp"
+  },
+  {
+    "customer_id": "cust_20c0a5118b56",
+    "name": "Diya Rattan",
+    "payment_history_score": 0.56,
+    "past_recovery_rate": 0.68,
+    "preferred_channel": "email"
+  },
+  {
+    "customer_id": "cust_e001bc34e58b",
+    "name": "Dominic Kakar",
+    "payment_history_score": 0.23,
+    "past_recovery_rate": 0.03,
+    "preferred_channel": "sms"
+  },
+  {
+    "customer_id": "cust_afc9c17c295f",
+    "name": "Simon Tata",
+    "payment_history_score": 0.4,
+    "past_recovery_rate": 0.07,
+    "preferred_channel": "whatsapp"
+  },
+  {
+    "customer_id": "cust_30f6b6655392",
+    "name": "Tara Dhar",
+    "payment_history_score": 0.88,
+    "past_recovery_rate": 0.31,
+    "preferred_channel": "whatsapp"
+  },
+  {
+    "customer_id": "cust_e4ddd5221643",
+    "name": "Liam Koshy",
+    "payment_history_score": 0.5,
+    "past_recovery_rate": 0.88,
+    "preferred_channel": "whatsapp"
+  },
+  {
+    "customer_id": "cust_d8028bff3e95",
+    "name": "Priya Rastogi",
+    "payment_history_score": 0.46,
+    "past_recovery_rate": 0.26,
+    "preferred_channel": "email"
+  },
+  {
+    "customer_id": "cust_f321a9cd8894",
+    "name": "Theodore Devi",
+    "payment_history_score": 0.74,
+    "past_recovery_rate": 0.54,
+    "preferred_channel": "whatsapp"
+  },
+  {
+    "customer_id": "cust_98552cf89037",
+    "name": "Gavin Batta",
+    "payment_history_score": 0.58,
+    "past_recovery_rate": 0.9,
+    "preferred_channel": "sms"
+  },
+  {
+    "customer_id": "cust_979cbca0f99d",
+    "name": "Michael Dutta",
+    "payment_history_score": 0.36,
+    "past_recovery_rate": 1.0,
+    "preferred_channel": "email"
+  },
+  {
+    "customer_id": "cust_627137cacfc2",
+    "name": "Devansh Rajan",
+    "payment_history_score": 0.51,
+    "past_recovery_rate": 0.09,
+    "preferred_channel": "email"
+  },
+  {
+    "customer_id": "cust_479253b69298",
+    "name": "Upadhriti Wadhwa",
+    "payment_history_score": 0.86,
+    "past_recovery_rate": 0.15,
+    "preferred_channel": "email"
+  },
+  {
+    "customer_id": "cust_abc64a544dd8",
+    "name": "Advay Contractor",
+    "payment_history_score": 0.79,
+    "past_recovery_rate": 0.42,
+    "preferred_channel": "email"
+  },
+  {
+    "customer_id": "cust_e498fa5b6bc5",
+    "name": "Harini Choudhury",
+    "payment_history_score": 0.38,
+    "past_recovery_rate": 0.6,
+    "preferred_channel": "sms"
+  },
+  {
+    "customer_id": "cust_02e7ba0e80d0",
+    "name": "Radhika Dugar",
+    "payment_history_score": 0.53,
+    "past_recovery_rate": 0.97,
+    "preferred_channel": "email"
+  },
+  {
+    "customer_id": "cust_d104c8786397",
+    "name": "Aarush Lall",
+    "payment_history_score": 0.68,
+    "past_recovery_rate": 0.11,
+    "preferred_channel": "whatsapp"
+  },
+  {
+    "customer_id": "cust_302d7cf48faa",
+    "name": "Yashica Cherian",
+    "payment_history_score": 0.75,
+    "past_recovery_rate": 0.77,
+    "preferred_channel": "sms"
+  },
+  {
+    "customer_id": "cust_6013e90877b8",
+    "name": "Yashica Issac",
+    "payment_history_score": 0.11,
+    "past_recovery_rate": 0.43,
+    "preferred_channel": "sms"
+  },
+  {
+    "customer_id": "cust_6a82eaf02d79",
+    "name": "Kashvi Edwin",
+    "payment_history_score": 0.0,
+    "past_recovery_rate": 0.72,
+    "preferred_channel": "whatsapp"
+  },
+  {
+    "customer_id": "cust_9f5c8f33cf06",
+    "name": "Ekiya Suresh",
+    "payment_history_score": 0.26,
+    "past_recovery_rate": 0.5,
+    "preferred_channel": "email"
+  },
+  {
+    "customer_id": "cust_cd1e4baa6563",
+    "name": "Isaac Patil",
+    "payment_history_score": 0.51,
+    "past_recovery_rate": 0.11,
+    "preferred_channel": "whatsapp"
+  },
+  {
+    "customer_id": "cust_fd7d394daa94",
+    "name": "Wriddhish Bhardwaj",
+    "payment_history_score": 0.3,
+    "past_recovery_rate": 0.64,
+    "preferred_channel": "whatsapp"
+  },
+  {
+    "customer_id": "cust_3bce69b93d2e",
+    "name": "Farhan Chada",
+    "payment_history_score": 0.2,
+    "past_recovery_rate": 0.37,
+    "preferred_channel": "email"
+  },
+  {
+    "customer_id": "cust_e861ba269c9d",
+    "name": "Ekapad Walia",
+    "payment_history_score": 0.54,
+    "past_recovery_rate": 0.78,
+    "preferred_channel": "whatsapp"
+  },
+  {
+    "customer_id": "cust_c384b971e723",
+    "name": "Kabir Soman",
+    "payment_history_score": 0.92,
+    "past_recovery_rate": 0.6,
+    "preferred_channel": "sms"
+  },
+  {
+    "customer_id": "cust_2b8cc91b4dfa",
+    "name": "Alka Wable",
+    "payment_history_score": 0.02,
+    "past_recovery_rate": 0.93,
+    "preferred_channel": "sms"
+  },
+  {
+    "customer_id": "cust_fa86009eb2e1",
+    "name": "Siddharth Zacharia",
+    "payment_history_score": 0.24,
+    "past_recovery_rate": 0.24,
+    "preferred_channel": "whatsapp"
+  },
+  {
+    "customer_id": "cust_81a807c13112",
+    "name": "Devika Rastogi",
+    "payment_history_score": 0.95,
+    "past_recovery_rate": 0.09,
+    "preferred_channel": "sms"
+  },
+  {
+    "customer_id": "cust_87f6ba3eec9f",
+    "name": "Raksha Varughese",
+    "payment_history_score": 0.82,
+    "past_recovery_rate": 0.98,
+    "preferred_channel": "whatsapp"
+  },
+  {
+    "customer_id": "cust_11dc8fc439ff",
+    "name": "Jai Kota",
+    "payment_history_score": 0.77,
+    "past_recovery_rate": 0.13,
+    "preferred_channel": "sms"
+  },
+  {
+    "customer_id": "cust_79d0a9b4c5c4",
+    "name": "Devansh Nigam",
+    "payment_history_score": 0.95,
+    "past_recovery_rate": 0.17,
+    "preferred_channel": "whatsapp"
+  },
+  {
+    "customer_id": "cust_f7da290ae9f6",
+    "name": "Victor Kannan",
+    "payment_history_score": 0.87,
+    "past_recovery_rate": 0.42,
+    "preferred_channel": "email"
+  },
+  {
+    "customer_id": "cust_0a7540b7068a",
+    "name": "Ekavir Bhargava",
+    "payment_history_score": 0.93,
+    "past_recovery_rate": 0.76,
+    "preferred_channel": "whatsapp"
+  },
+  {
+    "customer_id": "cust_b3e064858ce6",
+    "name": "Ekansh Balay",
+    "payment_history_score": 0.2,
+    "past_recovery_rate": 0.31,
+    "preferred_channel": "whatsapp"
+  },
+  {
+    "customer_id": "cust_dc6e7a66105f",
+    "name": "Ekavir Varkey",
+    "payment_history_score": 0.65,
+    "past_recovery_rate": 0.44,
+    "preferred_channel": "whatsapp"
+  },
+  {
+    "customer_id": "cust_4b1d1f45ad31",
+    "name": "Arya Sunder",
+    "payment_history_score": 0.45,
+    "past_recovery_rate": 0.25,
+    "preferred_channel": "email"
+  },
+  {
+    "customer_id": "cust_d5fcccd4e5ce",
+    "name": "Kevin Solanki",
+    "payment_history_score": 0.34,
+    "past_recovery_rate": 0.59,
+    "preferred_channel": "email"
+  }
+]

@@ -7,6 +7,7 @@ produces a scoring model, no control logic here.
 """
 
 import os
+from pathlib import Path
 import numpy as np
 import pandas as pd
 import joblib
@@ -24,8 +25,11 @@ from sklearn.calibration import calibration_curve
 
 from xgboost import XGBClassifier
 
-DATA_PATH = "backend/ml/data/training_corpus.csv"
-MODEL_DIR = "backend/ml/models"
+# Anchored on this file's location, not on the caller's cwd (see
+# simulate_training_data.py for the same fix and rationale).
+_ML_DIR = Path(__file__).resolve().parent
+DATA_PATH = _ML_DIR / "data" / "training_corpus.csv"
+MODEL_DIR = _ML_DIR / "models"
 RANDOM_STATE = 42
 
 CATEGORICAL_FEATURES = [
@@ -133,8 +137,8 @@ def main():
     print(f"XGB  ROC-AUC={xgb_metrics['roc_auc']:.4f}  PR-AUC={xgb_metrics['pr_auc']:.4f}")
 
     os.makedirs(MODEL_DIR, exist_ok=True)
-    joblib.dump(lr_pipeline, os.path.join(MODEL_DIR, "lr_model.joblib"))
-    joblib.dump(xgb_pipeline, os.path.join(MODEL_DIR, "xgb_model.joblib"))
+    joblib.dump(lr_pipeline, MODEL_DIR / "lr_model.joblib")
+    joblib.dump(xgb_pipeline, MODEL_DIR / "xgb_model.joblib")
     print(f"\nModels saved to {MODEL_DIR}/")
 
 

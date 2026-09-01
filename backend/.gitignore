@@ -1,0 +1,16 @@
+# Secrets -- backend/.env currently contains a live GEMINI_API_KEY.
+# It must never be committed. Rotate the key if it ever was.
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Generated / local state -- reproducible from db/db.py + data/*.json,
+# and from ml/simulate_training_data.py + ml/train_risk_model.py respectively.
+# Never commit the live demo DB or the regenerated training corpus.
+db/recovery.db
+ml/data/*.csv
+logs/*
+!logs/.gitkeep

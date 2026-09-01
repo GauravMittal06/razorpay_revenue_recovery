@@ -1,101 +1,88 @@
-import { useEffect, useState } from "react";
-import { fetchMetrics } from "../api/client";
-import RootCauseChart from "./RootCauseChart";
-import TimeToRecoveryChart from "./TimeToRecoveryChart";
-import ExceptionsPanel from "./ExceptionsPanel";
+import { useRecoveryData } from "../hooks/useRecoveryData";
+import { useHighlightOnChange } from "../hooks/useHighlightOnChange";
 import { LoadingState, ErrorState } from "./LoadingErrorStates";
 
-const CARD_ACCENTS = {
-  recovery: "border-l-green-500",
-  value: "border-l-indigo-500",
-  exposure: "border-l-amber-500",
-  exceptions: "border-l-red-500",
+const ACCENTS = {
+  recovery: "text-green-600",
+  value: "text-[var(--color-signal-600)]",
+  exposure: "text-amber-600",
+  exceptions: "text-[var(--color-ink-900)]",
 };
 
-function HeadlineCard({ label, value, sub, accent }) {
+// V0-inspired large-serif stat presentation, same underlying HeadlineCard
+// contract (label/value/sub/caption) and the same real useHighlightOnChange
+// pulse — only the type treatment changes.
+function HeadlineCard({ label, caption, value, sub, accent }) {
+  const changed = useHighlightOnChange(value);
   return (
-    <div className={`bg-white rounded-lg border border-gray-200 border-l-4 ${accent} shadow-sm p-4`}>
-      <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">{label}</div>
-      <div className="text-2xl font-bold text-gray-900">{value}</div>
-      {sub && <div className="text-xs text-gray-400 mt-1">{sub}</div>}
+    <div
+      className={`border-t-2 border-[var(--color-ink-900)]/10 pt-4 ${changed ? "highlight-pulse rounded-lg px-2 -mx-2" : ""}`}
+    >
+      <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[var(--color-ink-400)]">{label}</p>
+      <p className={`mt-2 font-serif text-3xl font-light tracking-[-0.02em] sm:text-4xl ${ACCENTS[accent]}`}>
+        {value}
+      </p>
+      {sub && <p className="font-mono text-[11px] text-[var(--color-ink-400)] mt-1.5">{sub}</p>}
+      {caption && <p className="text-xs text-[var(--color-ink-400)] mt-1.5 leading-snug max-w-[16rem]">{caption}</p>}
     </div>
   );
 }
 
+// Pure KPI strip — the "system state at a glance" part of Overview. Charts
+// and the exceptions breakdown live elsewhere now (Analytics, Exceptions)
+// so this component isn't duplicated across views.
 export default function MetricsPanel() {
-  const [metrics, setMetrics] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  async function load() {
-    setLoading(true);
-    try {
-      const data = await fetchMetrics();
-      setMetrics(data);
-      setError(null);
-    } catch (e) {
-      setError("Could not reach /api/metrics. Is the backend running?");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    load();
-  }, []);
+  const { metrics, metricsLoading, metricsError, refetchAll } = useRecoveryData();
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold text-gray-900">Metrics</h2>
+        <div>
+          <h2 className="text-base font-semibold text-[var(--color-ink-900)]">System state</h2>
+          <p className="text-xs text-[var(--color-ink-400)] mt-0.5">
+            Every figure below traces to a live database query — nothing here is pre-computed or fixed.
+          </p>
+        </div>
         <button
-          onClick={load}
-          disabled={loading}
-          className="text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+          onClick={refetchAll}
+          disabled={metricsLoading}
+          className="text-xs px-3 py-1.5 rounded-md border border-[var(--color-line)] text-[var(--color-ink-500)] hover:bg-[var(--color-paper)] disabled:opacity-50 transition-colors"
         >
-          {loading ? "Refreshing…" : "Refresh"}
+          {metricsLoading ? "Refreshing…" : "Refresh"}
         </button>
       </div>
 
-      {error && <ErrorState message={error} />}
-      {loading && !metrics && !error && <LoadingState label="Loading metrics…" />}
+      {metricsError && <ErrorState message={metricsError} />}
+      {metricsLoading && !metrics && !metricsError && <LoadingState label="Loading metrics…" />}
 
       {metrics && (
-        <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <HeadlineCard
-              label="Overall Recovery Rate"
-              value={`${metrics.overall_recovery_rate_pct}%`}
-              accent={CARD_ACCENTS.recovery}
-            />
-            <HeadlineCard
-              label="₹ Recovered / At Risk"
-              value={`${metrics.recovery_value_pct}%`}
-              sub={`₹${metrics.amount_recovered.toLocaleString()} / ₹${metrics.amount_at_risk_total.toLocaleString()}`}
-              accent={CARD_ACCENTS.value}
-            />
-            <HeadlineCard
-              label="Current Amount Exposed"
-              value={`₹${metrics.current_amount_exposed.toLocaleString()}`}
-              accent={CARD_ACCENTS.exposure}
-            />
-            <HeadlineCard
-              label="Unresolved Exceptions"
-              value={metrics.unresolved_exceptions_count}
-              accent={CARD_ACCENTS.exceptions}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <RootCauseChart recoveryByRootCause={metrics.recovery_by_root_cause} />
-            <TimeToRecoveryChart distribution={metrics.time_to_recovery_distribution} />
-          </div>
-
-          <ExceptionsPanel
-            count={metrics.unresolved_exceptions_count}
-            byFlagType={metrics.unresolved_exceptions_by_flag_type}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-5">
+          <HeadlineCard
+            label="Overall recovery rate"
+            value={`${metrics.overall_recovery_rate_pct}%`}
+            caption="Share of at-risk payments the engine has recovered so far."
+            accent="recovery"
           />
-        </>
+          <HeadlineCard
+            label="₹ recovered / at risk"
+            value={`${metrics.recovery_value_pct}%`}
+            sub={`₹${metrics.amount_recovered.toLocaleString()} / ₹${metrics.amount_at_risk_total.toLocaleString()}`}
+            caption="The headline number — money actually clawed back vs. total exposure."
+            accent="value"
+          />
+          <HeadlineCard
+            label="Amount currently exposed"
+            value={`₹${metrics.current_amount_exposed.toLocaleString()}`}
+            caption="Still open, unrecovered, live right now."
+            accent="exposure"
+          />
+          <HeadlineCard
+            label="Unresolved exceptions"
+            value={metrics.unresolved_exceptions_count}
+            caption="Cases the engine flagged for a human — see the Exceptions view for why."
+            accent="exceptions"
+          />
+        </div>
       )}
     </div>
   );

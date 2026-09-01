@@ -1,29 +1,35 @@
 import { useEffect, useState } from "react";
 import { fetchCaseDetail } from "../api/client";
-import { Badge, badgeClass, RECOVERY_STATUS_STYLES, OUTCOME_STYLES, FLAG_STYLES } from "../statusColors";
+import { useActiveCase } from "../hooks/useActiveCase";
+import { Badge, badgeClass, RECOVERY_STATUS_STYLES, OUTCOME_STYLES, FLAG_STYLES, AuthorityTag } from "../statusColors";
 import { LoadingState, ErrorState, EmptyState } from "./LoadingErrorStates";
 
-export default function CaseDetail({ paymentId }) {
+function SectionLabel({ children }) {
+  return <h3 className="eyebrow mb-2">{children}</h3>;
+}
+
+export default function CaseDetail() {
+  const { activeCaseId } = useActiveCase();
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (!paymentId) return;
+    if (!activeCaseId) return;
     setDetail(null);
     setLoading(true);
-    fetchCaseDetail(paymentId)
+    fetchCaseDetail(activeCaseId)
       .then((data) => {
         setDetail(data);
         setError(null);
       })
       .catch(() => setError("Could not load case detail."))
       .finally(() => setLoading(false));
-  }, [paymentId]);
+  }, [activeCaseId]);
 
-  if (!paymentId) {
+  if (!activeCaseId) {
     return (
-      <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4">
+      <div className="bg-[var(--color-surface)] rounded-lg border border-[var(--color-line)] shadow-sm p-4">
         <EmptyState message="Select a case from the table to view its audit trail." />
       </div>
     );
@@ -31,7 +37,7 @@ export default function CaseDetail({ paymentId }) {
 
   if (error) {
     return (
-      <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4">
+      <div className="bg-[var(--color-surface)] rounded-lg border border-[var(--color-line)] shadow-sm p-4">
         <ErrorState message={error} />
       </div>
     );
@@ -39,7 +45,7 @@ export default function CaseDetail({ paymentId }) {
 
   if (loading || !detail) {
     return (
-      <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4">
+      <div className="bg-[var(--color-surface)] rounded-lg border border-[var(--color-line)] shadow-sm p-4">
         <LoadingState label="Loading case…" />
       </div>
     );
@@ -48,18 +54,21 @@ export default function CaseDetail({ paymentId }) {
   const { payment, recovery_actions, messages } = detail;
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 shadow-sm divide-y divide-gray-100">
+    <div className="bg-[var(--color-surface)] rounded-lg border border-[var(--color-line)] shadow-sm divide-y divide-[var(--color-line-soft)]">
       <div className="p-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-mono text-gray-500">{payment.id}</h2>
+          <h2 className="font-mono text-xs text-[var(--color-ink-400)]">{payment.id}</h2>
           <Badge className={badgeClass(RECOVERY_STATUS_STYLES, payment.recovery_status)}>
             {payment.recovery_status}
           </Badge>
         </div>
-        <p className="text-sm text-gray-800 font-medium mt-1">
-          {payment.customer_name || "Unknown customer"} · ₹{payment.amount?.toLocaleString()}
+        <p className="font-serif text-lg text-[var(--color-ink-900)] mt-1">
+          {payment.customer_name || "Unknown customer"}{" "}
+          <span className="font-mono text-sm font-normal text-[var(--color-ink-500)]">
+            ₹{payment.amount?.toLocaleString()}
+          </span>
         </p>
-        <p className="text-xs text-gray-500 mt-0.5">
+        <p className="text-xs text-[var(--color-ink-400)] mt-0.5">
           {payment.event_type}
           {payment.recovered_at
             ? ` · recovered ${new Date(payment.recovered_at * 1000).toLocaleString()}`
@@ -68,37 +77,35 @@ export default function CaseDetail({ paymentId }) {
       </div>
 
       <div className="p-4">
-        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-          Recovery Actions (Audit Trail)
-        </h3>
+        <SectionLabel>Recovery actions (audit trail)</SectionLabel>
         {recovery_actions.length === 0 ? (
           <EmptyState message="No actions logged yet." />
         ) : (
-          <ul className="space-y-3">
+          <ol className="relative border-l border-[var(--color-line)] ml-1 space-y-4">
             {recovery_actions.map((a) => (
-              <li key={a.action_id} className="text-xs border-l-2 border-indigo-300 pl-3">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-medium text-gray-800">{a.action_type || "—"}</span>
+              <li key={a.action_id} className="pl-4 relative">
+                <span className="absolute -left-[4.5px] top-1 size-2 rounded-full bg-[var(--color-signal-600)] ring-4 ring-[var(--color-surface)]" />
+                <div className="flex items-center gap-1.5 flex-wrap text-xs">
+                  <span className="font-medium text-[var(--color-ink-800)]">{a.action_type || "—"}</span>
                   <Badge className={badgeClass(OUTCOME_STYLES, a.outcome)}>{a.outcome}</Badge>
                   {a.flag_type && (
                     <Badge className={badgeClass(FLAG_STYLES, a.flag_type)}>{a.flag_type}</Badge>
                   )}
+                  <AuthorityTag triggeredBy={a.triggered_by} />
                 </div>
-                <div className="text-gray-500 mt-1">{a.reasoning}</div>
-                <div className="text-gray-400 mt-1">
-                  {new Date(a.timestamp * 1000).toLocaleString()} · {a.triggered_by}
+                <div className="text-xs text-[var(--color-ink-500)] mt-1">{a.reasoning}</div>
+                <div className="font-mono text-[10px] text-[var(--color-ink-300)] mt-1">
+                  {new Date(a.timestamp * 1000).toLocaleString()}
                   {a.ml_recovery_probability != null && ` · ML ${a.ml_recovery_probability}`}
                 </div>
               </li>
             ))}
-          </ul>
+          </ol>
         )}
       </div>
 
       <div className="p-4">
-        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-          Messages
-        </h3>
+        <SectionLabel>Messages</SectionLabel>
         {messages.length === 0 ? (
           <EmptyState message="No messages yet." />
         ) : (
@@ -106,13 +113,13 @@ export default function CaseDetail({ paymentId }) {
             {messages.map((m) => (
               <li
                 key={m.message_id}
-                className={`text-xs p-2 rounded ${
-                  m.sender === "agent" ? "bg-indigo-50" : "bg-gray-50"
+                className={`text-xs p-2 rounded-md ${
+                  m.sender === "agent" ? "bg-[var(--color-signal-50)]" : "bg-[var(--color-paper)]"
                 }`}
               >
-                <div className="font-medium text-gray-700">{m.sender}</div>
-                <div className="text-gray-600">{m.content}</div>
-                <div className="text-gray-400 mt-0.5">
+                <div className="font-medium text-[var(--color-ink-700)]">{m.sender}</div>
+                <div className="text-[var(--color-ink-600)]">{m.content}</div>
+                <div className="font-data text-[var(--color-ink-300)] mt-0.5">
                   {new Date(m.timestamp * 1000).toLocaleString()}
                 </div>
               </li>

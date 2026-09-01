@@ -1,0 +1,27 @@
+[
+  {
+    "merchant_id": "merch_000",
+    "name": "Kirana Direct",
+    "cohort": "marketplace"
+  },
+  {
+    "merchant_id": "merch_001",
+    "name": "Bloom & Basket",
+    "cohort": "enterprise"
+  },
+  {
+    "merchant_id": "merch_002",
+    "name": "Vertex Fitness",
+    "cohort": "enterprise"
+  },
+  {
+    "merchant_id": "merch_003",
+    "name": "Northline Logistics",
+    "cohort": "marketplace"
+  },
+  {
+    "merchant_id": "merch_004",
+    "name": "Paperplane Stationery",
+    "cohort": "enterprise"
+  }
+]

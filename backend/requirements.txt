@@ -1,0 +1,51 @@
+# Reconstructed from the actual import graph (api/, engine/, llm/, ml/, db/)
+# and verified against a clean install. Versions are pinned, not floor-bounded,
+# because two of them are load-bearing for correctness, not just convenience:
+#
+#   scikit-learn==1.7.2  -- the shipped model artifacts (ml/models/*.joblib)
+#                           were pickled under this exact version. A newer
+#                           sklearn (tested: 1.9.0) loads them with an
+#                           InconsistentVersionWarning and no guarantee of
+#                           identical scoring behavior.
+#   numpy==2.2.6          -- paired with sklearn 1.7.2. A newer numpy
+#                           (tested: 2.5.2) triggers array-shape deprecation
+#                           warnings on every model load via joblib.
+#
+# All pins below were verified together: joblib.load() on both
+# ml/models/lr_model.joblib and ml/models/xgb_model.joblib produces zero
+# warnings, and predict_proba() on a representative row returns a sane,
+# non-degenerate probability.
+
+# --- API layer (backend/api) ---
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+pydantic==2.13.5
+python-dotenv==1.2.3
+
+# --- ML layer (backend/ml) ---
+numpy==2.2.6
+pandas==3.0.5
+scikit-learn==1.7.2
+xgboost==3.4.1
+joblib==1.5.3
+
+# --- Data Factory (backend/data_factory), added Phase 2 gate-closure pass ---
+# scipy was already present transitively as scikit-learn's own dependency,
+# but backend/data_factory/validators.py now imports scipy.stats directly
+# (fatigue_significance_check's Pearson correlation + p-value) -- pinned
+# here explicitly rather than left implicit. NOTE: this exact version
+# (1.17.1) was verified only against sklearn==1.8.0/numpy==2.4.4 in the
+# sandbox this was built in, NOT against the scikit-learn==1.7.2/
+# numpy==2.2.6 pins above (those weren't installed in that sandbox) --
+# confirm `pip install -r requirements.txt` resolves cleanly and
+# `import scipy.stats` works with zero warnings in your actual
+# environment before trusting this pin the way the numpy/scikit-learn
+# pins above were actually verified.
+scipy==1.17.1
+
+# --- LLM layer (backend/llm) ---
+# Optional at runtime: both llm/parse_intent.py and llm/generate_message.py
+# catch ImportError and fail closed to deterministic fallback behavior if
+# this package or GEMINI_API_KEY is absent. Still pinned here because the
+# product depends on it being present in any real deployment.
+google-generativeai==0.8.6

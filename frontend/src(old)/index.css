@@ -1,0 +1,106 @@
+@import "tailwindcss";
+
+/*
+  Revenue Recovery — control tower visual system.
+  Cool, dense, instrument-panel styling: ink text on quiet paper, a single
+  deep-signal accent for authoritative actions/decisions, and a monospace
+  register for anything that is data (IDs, amounts, timestamps) rather than
+  prose. Status semantics (green/amber/red/blue) stay sourced from
+  statusColors.jsx and are treated as fixed vocabulary, not decoration.
+*/
+
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "IBM Plex Mono", Menlo, Consolas, monospace;
+
+  --color-ink-900: #0b1220;
+  --color-ink-700: #1e293b;
+  --color-ink-500: #475569;
+  --color-ink-400: #64748b;
+  --color-ink-300: #94a3b8;
+
+  --color-paper: #f5f6fa;
+  --color-surface: #ffffff;
+  --color-line: #e4e7ee;
+  --color-line-soft: #edeff5;
+
+  --color-signal-900: #302b81;
+  --color-signal-700: #3730a3;
+  --color-signal-600: #4338ca;
+  --color-signal-100: #eef0fd;
+  --color-signal-50: #f7f8fe;
+
+  --color-advisory-500: #64748b;
+  --color-advisory-100: #eef1f5;
+}
+
+html {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink-900);
+}
+
+/* Data register — IDs, amounts, timestamps, JSON. Kept as a single utility
+   so every component references the same instrument-panel numeral style. */
+.font-data {
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum" 1, "zero" 1;
+  letter-spacing: -0.01em;
+}
+
+.eyebrow {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ink-400);
+}
+
+/* Restrained change-highlight: a quiet ring pulse, not motion or scale.
+   Applied via the `highlight-pulse` class when useHighlightOnChange /
+   useHighlightNewItems report a recent change. */
+@keyframes highlight-pulse {
+  0% {
+    background-color: var(--color-signal-100);
+    box-shadow: 0 0 0 1px var(--color-signal-600);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: 0 0 0 1px transparent;
+  }
+}
+
+.highlight-pulse {
+  animation: highlight-pulse 900ms ease-out;
+}
+
+@keyframes stage-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.stage-reveal {
+  animation: stage-reveal 320ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .highlight-pulse,
+  .stage-reveal {
+    animation: none !important;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-signal-600);
+  outline-offset: 2px;
+}

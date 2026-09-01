@@ -8,6 +8,12 @@ to output.
 import numpy as np
 import pandas as pd
 import os
+from pathlib import Path
+
+# Anchored on this file's location, not on the caller's cwd -- the prior
+# hardcoded "backend/ml/data/..." string only worked when invoked from the
+# one directory containing backend/, which was never enforced anywhere.
+DATA_DIR = Path(__file__).resolve().parent / "data"
 
 RNG_SEED = 42
 N_CASES = 8000
@@ -199,9 +205,9 @@ def generate_corpus(n_cases=N_CASES, seed=RNG_SEED):
 
 if __name__ == "__main__":
     df = generate_corpus()
-    out_path = "backend/ml/data/training_corpus.csv"
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    out_path = DATA_DIR / "training_corpus.csv"
+    os.makedirs(DATA_DIR, exist_ok=True)
     df.to_csv(out_path, index=False)
-    print(f"{len(df)} rows, {df['case_id'].nunique()} cases -> {out_path}")
+    print(f"seed={RNG_SEED} n_cases={N_CASES} -> {len(df)} rows, {df['case_id'].nunique()} cases -> {out_path}")
     print("overall positive rate:", df["y"].mean())
     print(df.groupby("candidate_action")["y"].mean())

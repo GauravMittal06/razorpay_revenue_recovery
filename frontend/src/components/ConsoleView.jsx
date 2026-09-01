@@ -1,64 +1,49 @@
-import { useState } from "react";
 import EventTriggerForm from "./EventTriggerForm";
 import ReplyBox from "./ReplyBox";
 import ReasoningPanel from "./ReasoningPanel";
-import EscalationContextBundle from "./EscalationContextBundle";
-import SimulateRecoveryButton from "./SimulateRecoveryButton";
-import LiveAuditFeed from "./LiveAuditFeed";
-import MetricsPanel from "./MetricsPanel";
+import CaseContextPanel from "./CaseContextPanel";
+import AuthorityChainStrip from "./AuthorityChainStrip";
+import { useActiveCase } from "../hooks/useActiveCase";
 
-function ActiveCaseIndicator({ paymentId }) {
-  if (!paymentId) return null;
+function ActiveCaseIndicator() {
+  const { activeCaseId } = useActiveCase();
+  if (!activeCaseId) {
+    return (
+      <div className="text-xs text-[var(--color-ink-400)] px-1">
+        No active case yet — trigger an event or send a reply to begin investigating.
+      </div>
+    );
+  }
   return (
-    <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 rounded-full px-3 py-1.5 w-fit">
-      <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
-      <span className="text-xs text-indigo-700">
-        Active case: <span className="font-mono font-medium">{paymentId}</span>
+    <div className="flex items-center gap-2 bg-[var(--color-signal-50)] border border-[var(--color-signal-100)] rounded-full px-3 py-1.5 w-fit">
+      <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-signal-600)]" />
+      <span className="text-xs text-[var(--color-signal-700)]">
+        Active case: <span className="font-data font-medium">{activeCaseId}</span>
       </span>
     </div>
   );
 }
 
+// Live Agent view body — the one-case live process view. Restored priority
+// order per the approved workflow: Event Trigger + Customer Reply → AI
+// Understanding → Rule Engine Decision → Compliance/Execution → Case
+// Context. LiveAuditFeed lives exclusively in the Audit Trail view now, not
+// here — this view is scoped to one case, Audit Trail is the global ledger.
 export default function ConsoleView() {
-  const [lastResult, setLastResult] = useState(null);
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [activePaymentId, setActivePaymentId] = useState(null);
-
-  function handleTriggered(result) {
-    setLastResult(result);
-    setActivePaymentId(result.payment?.id || null);
-    setRefreshKey((k) => k + 1);
-  }
-
-  function handleReplied(result) {
-    setLastResult(result);
-    setActivePaymentId(result.payment_id || null);
-    setRefreshKey((k) => k + 1);
-  }
-
-  function handleSimulated() {
-    setRefreshKey((k) => k + 1);
-  }
-
   return (
     <div className="space-y-6">
-      <MetricsPanel key={refreshKey} />
+      <AuthorityChainStrip />
 
-      <ActiveCaseIndicator paymentId={activePaymentId} />
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <EventTriggerForm onTriggered={handleTriggered} />
-        <ReplyBox onReplied={handleReplied} activePaymentId={activePaymentId} />
-      </div>
+      <ActiveCaseIndicator />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <ReasoningPanel result={lastResult} />
-        <LiveAuditFeed refreshKey={refreshKey} />
+        <EventTriggerForm />
+        <ReplyBox />
       </div>
 
-      <EscalationContextBundle paymentId={activePaymentId} decision={lastResult?.decision} />
+      <ReasoningPanel />
 
-      <SimulateRecoveryButton paymentId={activePaymentId} onDone={handleSimulated} />
+      <CaseContextPanel />
     </div>
   );
 }

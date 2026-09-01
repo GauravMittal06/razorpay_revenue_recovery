@@ -4,16 +4,24 @@ Wires generate_recovery_message() into the recovery flow, called after
 execute_action() in both core_loop.py (batch) and handle_customer_reply.py
 (reply-triggered). Only ever acts on an already-finalized decision -- never
 influences or re-selects an action. decide_action() remains sole authority.
+
+Phase 1 (Schema Foundation): messages are keyed by opportunity_id (the
+conversation spans the whole case, not one payment attempt). The LLM layer
+itself (llm/generate_message.py) is untouched -- it still takes a plain
+dict with event_type/amount/currency; this file is responsible for
+assembling that dict from the opportunity (+ latest payment attempt for
+currency, which stays a per-attempt transactional field).
 """
 
 import time
 
-from llm.generate_message import generate_recovery_message
+from backend.llm.generate_message import generate_recovery_message
 
 ELIGIBLE_ACTIONS = {"retry", "reminder"}
 
 
-def deliver_recovery_message(payment: dict, classification: dict, decision: dict, conn) -> dict:
+def deliver_recovery_message(opportunity: dict, classification: dict, decision: dict, conn,
+                              latest_payment: dict = None) -> dict:
     """
     Returns:
     {
@@ -31,7 +39,16 @@ def deliver_recovery_message(payment: dict, classification: dict, decision: dict
     if decision.get("outcome") != "executed" or decision.get("action_type") not in ELIGIBLE_ACTIONS:
         return {"delivered": False, "status": "skipped_ineligible", "message": None}
 
-    generated = generate_recovery_message(payment, classification, decision["action_type"])
+    # llm/generate_message.py's signature/contract is untouched -- it takes
+    # a plain payment-shaped dict. Assemble it here rather than changing
+    # the LLM layer's boundary.
+    message_context = {
+        "event_type": opportunity.get("event_type"),
+        "amount": opportunity.get("amount_at_risk"),
+        "currency": (latest_payment or {}).get("currency", "INR"),
+    }
+
+    generated = generate_recovery_message(message_context, classification, decision["action_type"])
     message_text = generated["message"]
     gen_status = generated["status"]  # "ok" | "fallback" -- both persisted identically
 
@@ -39,10 +56,10 @@ def deliver_recovery_message(payment: dict, classification: dict, decision: dict
         conn.execute(
             """
             INSERT INTO messages
-            (payment_id, sender, content, intent_extracted, intent_confidence, mentioned_reason, timestamp)
+            (opportunity_id, sender, content, intent_extracted, intent_confidence, mentioned_reason, timestamp)
             VALUES (?, 'agent', ?, NULL, NULL, NULL, ?)
             """,
-            (payment["id"], message_text, int(time.time())),
+            (opportunity["opportunity_id"], message_text, int(time.time())),
         )
         conn.commit()
     except Exception:

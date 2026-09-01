@@ -9,6 +9,14 @@ Compliance rules (SoT section 7, locked, non-negotiable):
 - Auto-stop after 7 days no response -> escalate to human queue
 - No contact outside 9am-8pm (simulated)
 - Every action logged with a reason -- no silent actions
+
+Phase 1 (Schema Foundation): operates on an `opportunity` dict (the
+economic situation, one row per distinct revenue-at-risk case) plus an
+optional `latest_payment` dict (the most recent transactional attempt, for
+attempt-specific ML features like `method`). Compliance history is read
+from recovery_decisions, keyed by opportunity_id, not from the retired
+recovery_actions table keyed by payment_id. None of the compliance rules
+themselves changed -- only what they read from and will be written against.
 """
 
 import time
@@ -35,18 +43,18 @@ DAY_SECONDS = 86400
 COOLDOWN_SECONDS = COOLDOWN_HOURS * 3600
 
 
-def _get_history(payment_id: str, conn):
+def _get_history(opportunity_id: str, conn):
     rows = conn.execute(
-        "SELECT * FROM recovery_actions WHERE payment_id = ? ORDER BY timestamp ASC",
-        (payment_id,),
+        "SELECT * FROM recovery_decisions WHERE opportunity_id = ? ORDER BY timestamp ASC",
+        (opportunity_id,),
     ).fetchall()
     return [dict(r) for r in rows]
 
 
-def _has_customer_reply(payment_id: str, conn) -> bool:
+def _has_customer_reply(opportunity_id: str, conn) -> bool:
     row = conn.execute(
-        "SELECT COUNT(*) as c FROM messages WHERE payment_id = ? AND sender = 'customer'",
-        (payment_id,),
+        "SELECT COUNT(*) as c FROM messages WHERE opportunity_id = ? AND sender = 'customer'",
+        (opportunity_id,),
     ).fetchone()
     return row["c"] > 0
 
@@ -103,7 +111,7 @@ def _check_intent_compatibility(root_cause, mentioned_reason, extracted_intent):
     return "mismatch", True
 
 
-def _get_recovery_probability(payment, classification, candidate_action,
+def _get_recovery_probability(opportunity, latest_payment, classification, candidate_action,
                                retry_only_count, history, now, conn):
     """
     Advisory-only ML signal. Scores the single action already selected by
@@ -115,7 +123,7 @@ def _get_recovery_probability(payment, classification, candidate_action,
     if model is None:
         return None
     try:
-        customer = _get_customer(payment.get("customer_id"), conn)
+        customer = _get_customer(opportunity.get("customer_id"), conn)
 
         last_entry = history[-1] if history else None
         last_action_type = last_entry["action_type"] if last_entry else "none"
@@ -123,17 +131,18 @@ def _get_recovery_probability(payment, classification, candidate_action,
             (now - last_entry["timestamp"]) / 3600 if last_entry else 0
         )
 
-        days_since_event = (now - payment["created_at"]) / 86400
+        days_since_event = (now - opportunity["created_at"]) / 86400
+        method = (latest_payment or {}).get("method")
 
         import pandas as pd
         row = pd.DataFrame([{
-            "event_type": payment.get("event_type"),
+            "event_type": opportunity.get("event_type"),
             "root_cause": classification.get("root_cause") if classification else None,
-            "amount": payment.get("amount"),
-            "method": payment.get("method"),
+            "amount": opportunity.get("amount_at_risk"),
+            "method": method,
             "retry_count": retry_only_count,
             "days_since_event": days_since_event,
-            "days_overdue": payment.get("days_overdue") or 0,
+            "days_overdue": opportunity.get("days_overdue") or 0,
             "last_action_type": last_action_type,
             "hours_since_last_action": hours_since_last_action,
             "candidate_action": candidate_action,
@@ -149,7 +158,8 @@ def _get_recovery_probability(payment, classification, candidate_action,
         return None
 
 
-def decide_action(payment: dict, classification: dict, conn,
+def decide_action(opportunity: dict, classification: dict, conn,
+                   latest_payment: dict = None,
                    extracted_intent: str = None,
                    intent_confidence: float = None,
                    mentioned_reason: str = None,
@@ -167,17 +177,22 @@ def decide_action(payment: dict, classification: dict, conn,
       "flag_type": "mismatch"|"root_cause_update_candidate"|"dispute_flag"|None
     }
 
+    `latest_payment` is optional context (the most recent transactional
+    attempt on this opportunity) used only for attempt-specific ML
+    features like `method` -- never for compliance branching, which is
+    entirely opportunity-scoped.
+
     extracted_intent / intent_confidence / mentioned_reason / dispute_flag are
     optional advisory inputs from the LLM intent-parsing layer (Stage 3). They
     never select or trigger an action directly -- decide_action() remains sole
     compliance/control authority. Defaults preserve pre-Stage-3 behavior
     exactly when omitted (e.g. existing core_loop.py batch calls).
     """
-    payment_id = payment["id"]
-    event_type = payment["event_type"]
+    opportunity_id = opportunity["opportunity_id"]
+    event_type = opportunity["event_type"]
     now = int(time.time())
 
-    history = _get_history(payment_id, conn)
+    history = _get_history(opportunity_id, conn)
     contact_history = [
         h for h in history
         if h["action_type"] in ("retry", "reminder") and h["outcome"] == "executed"
@@ -200,7 +215,7 @@ def decide_action(payment: dict, classification: dict, conn,
     )
 
     default_action = "reminder" if event_type != "payment_failed" else "retry"
-    if event_type == "invoice_overdue" and (payment.get("days_overdue") or 0) > 14:
+    if event_type == "invoice_overdue" and (opportunity.get("days_overdue") or 0) > 14:
         default_action = "escalate"
 
     # already stopped -> stays stopped
@@ -265,12 +280,12 @@ def decide_action(payment: dict, classification: dict, conn,
     # invoice_overdue uses days_overdue (event-specific timing input,
     # SoT section 3); other event types use age from created_at.
     if event_type == "invoice_overdue":
-        no_response_trigger = (payment.get("days_overdue") or 0) >= AUTO_STOP_DAYS
+        no_response_trigger = (opportunity.get("days_overdue") or 0) >= AUTO_STOP_DAYS
     else:
-        age_seconds = now - payment["created_at"]
+        age_seconds = now - opportunity["created_at"]
         no_response_trigger = age_seconds > AUTO_STOP_DAYS * DAY_SECONDS
 
-    if no_response_trigger and not _has_customer_reply(payment_id, conn):
+    if no_response_trigger and not _has_customer_reply(opportunity_id, conn):
         return {
             "action_type": "escalate",
             "allowed": True,
@@ -278,7 +293,7 @@ def decide_action(payment: dict, classification: dict, conn,
             "outcome": "executed",
             "triggered_by": "rule",
             "ml_recovery_probability": _get_recovery_probability(
-                payment, classification, "escalate",
+                opportunity, latest_payment, classification, "escalate",
                 retry_only_count, history, now, conn
             ),
             "flag_type": pending_flag_type,
@@ -309,7 +324,7 @@ def decide_action(payment: dict, classification: dict, conn,
     # clock (created_at), not the real system clock. escalate is
     # internal routing, not customer contact, so it bypasses this check.
     if default_action in ("retry", "reminder"):
-        simulated_hour = datetime.fromtimestamp(payment["created_at"]).hour
+        simulated_hour = datetime.fromtimestamp(opportunity["created_at"]).hour
         if not (CONTACT_WINDOW_START <= simulated_hour < CONTACT_WINDOW_END):
             return {
                 "action_type": default_action,
@@ -327,7 +342,7 @@ def decide_action(payment: dict, classification: dict, conn,
         "outcome": "executed",
         "triggered_by": "rule",
         "ml_recovery_probability": _get_recovery_probability(
-            payment, classification, default_action,
+            opportunity, latest_payment, classification, default_action,
             retry_only_count, history, now, conn
         ),
         "flag_type": pending_flag_type,
