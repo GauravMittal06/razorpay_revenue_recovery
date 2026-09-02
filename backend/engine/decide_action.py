@@ -23,6 +23,17 @@ import time
 import os
 from datetime import datetime
 
+# Phase 5 declared bounds. Imported, never re-derived here: the method-change
+# boundary and the exhaustion outcome are recorded rulings, and a second
+# inline definition of either is how a boundary drifts.
+from backend.engine.phase5_config import (
+    EVALUABLE_BUT_NOT_EXECUTABLE_ACTIONS,
+    EXECUTABLE_ACTIONS,
+    EXHAUSTION_OUTCOME,
+    MAX_FALLTHROUGH_CANDIDATES,
+    METHOD_CHANGE_IS_EXECUTABLE,
+)
+
 MAX_RETRIES = 3
 COOLDOWN_HOURS = 24
 AUTO_STOP_DAYS = 7
@@ -158,12 +169,196 @@ def _get_recovery_probability(opportunity, latest_payment, classification, candi
         return None
 
 
+# --------------------------------------------------------------------------
+# Phase 5: optimizer-driven candidate adjudication
+#
+# Everything below is reached ONLY when a caller supplies ranked_candidates.
+# With ranked_candidates=None the function body below is untouched and byte-
+# identical to its pre-Phase-5 form, which the W1 golden corpus pins.
+# --------------------------------------------------------------------------
+
+# Customer-facing actions, which the contact-hours window applies to.
+# `escalate` is deliberately absent: SoT section 7 exempts it because it is
+# internal routing to a human queue, not customer contact. `payment_link` IS
+# here -- it delivers a link to the customer over a channel, so it is contact
+# by the same definition, even though the pre-Phase-5 code never had to
+# classify it (payment_link could not be a hardcoded default_action, so it
+# never reached the window check).
+CONTACT_ACTIONS = ("retry", "reminder", "payment_link")
+
+
+def _within_contact_window(created_at) -> bool:
+    """
+    The 9am-8pm check, evaluated on the event's simulated clock exactly as the
+    hardcoded path does.
+
+    This deliberately duplicates the condition at the bottom of decide_action()
+    rather than extracting a shared helper, because the hardcoded body is
+    required to stay literally unmodified. The duplication is pinned by
+    test_contact_window_helper_agrees_with_the_hardcoded_branch, which asserts
+    the two agree at all 24 hours -- so a change to one that is not mirrored in
+    the other is a test failure, not a silent divergence.
+    """
+    hour = datetime.fromtimestamp(created_at).hour
+    return CONTACT_WINDOW_START <= hour < CONTACT_WINDOW_END
+
+
+def _is_method_change(candidate: dict, current_method) -> bool:
+    """
+    A method change is not an action type -- it is a retry carrying a payment
+    method other than the one on the opportunity's latest attempt. See
+    PHASE5_NOTES.md section 0.1.
+
+    Derived from the method values themselves rather than trusting the
+    generator's `method_changed` flag alone; the flag is cross-checked, and a
+    disagreement is treated as a method change (the safe direction) rather
+    than resolved in favour of either source.
+    """
+    method = candidate.get("method")
+    if method in (None, "n/a"):
+        return False
+    derived = current_method is not None and method != current_method
+    flagged = bool(candidate.get("method_changed", False))
+    return derived or flagged
+
+
+def _candidate_block_reason(candidate: dict, current_method, created_at):
+    """
+    Why this candidate cannot be executed, or None if it can.
+
+    Executability only. Every opportunity-scoped compliance rule (cooldown,
+    attempt ceiling, already-stopped/escalated, confidence and mismatch
+    gating) has already been adjudicated by the unchanged hardcoded path
+    before this is ever called -- those rules block every candidate equally,
+    so they cannot be a reason to prefer one candidate over another.
+    """
+    action = candidate.get("action_type")
+
+    if action in EVALUABLE_BUT_NOT_EXECUTABLE_ACTIONS:
+        return f"{action} is evaluable but not executable"
+
+    if action not in EXECUTABLE_ACTIONS:
+        return f"{action} is outside the executable action vocabulary"
+
+    if _is_method_change(candidate, current_method):
+        if METHOD_CHANGE_IS_EXECUTABLE:
+            raise ValueError(
+                "METHOD_CHANGE_IS_EXECUTABLE is True; autonomous payment-method "
+                "switching is a permanent structural boundary")
+        return "payment-method change is evaluable but never executable"
+
+    if action in CONTACT_ACTIONS and not _within_contact_window(created_at):
+        return (f"outside permitted contact window "
+                f"({CONTACT_WINDOW_START}:00-{CONTACT_WINDOW_END}:00)")
+
+    return None
+
+
+def _decide_action_from_ranked(opportunity, classification, conn,
+                               ranked_candidates, baseline, latest_payment):
+    """
+    Walk the optimizer's ranked list and select the first executable
+    candidate, given a baseline verdict that has already cleared every
+    opportunity-scoped compliance rule.
+
+    The list is consumed **in the order given**. Nothing here sorts, reverses
+    or otherwise reorders it, and nothing here reads predicted_eiv: ranking
+    authority belongs to the optimizer exclusively (EXECUTION_PLAN.md:83), and
+    the rupee-space ordering carries a measured ~16% pair-order sensitivity
+    (PHASE4_NOTES.md section 8.6) that the rule engine must disclose rather
+    than silently correct. Both properties are enforced statically by
+    tests/test_phase5_fallthrough.py.
+    """
+    opportunity_id = opportunity["opportunity_id"]
+    created_at = opportunity["created_at"]
+    current_method = (latest_payment or {}).get("method")
+
+    if len(ranked_candidates) > MAX_FALLTHROUGH_CANDIDATES:
+        raise ValueError(
+            f"ranked list of {len(ranked_candidates)} exceeds the declared "
+            f"ceiling of {MAX_FALLTHROUGH_CANDIDATES} "
+            f"(opportunity {opportunity_id}); the optimizer's own candidate "
+            "bound was breached upstream")
+
+    selected, selected_position, skipped = None, None, []
+    for position, candidate in enumerate(ranked_candidates):
+        reason = _candidate_block_reason(candidate, current_method, created_at)
+        if reason is None:
+            selected, selected_position = candidate, position
+            break
+        skipped.append(f"rank {candidate.get('rank', position + 1)} "
+                       f"{candidate.get('action_type')}: {reason}")
+
+    if selected is None:
+        # If the hardcoded path had already blocked this opportunity for a
+        # specific reason, that reason is more informative than the generic
+        # exhaustion outcome and is what gets recorded. Reaching here with a
+        # blocked baseline means the fallthrough was attempted (a contact-hours
+        # block) and found nothing outside the window's reach -- the original
+        # block is still the true and narrower answer.
+        if not baseline["allowed"]:
+            return baseline
+        return {
+            "action_type": None,
+            "allowed": False,
+            "reasoning": (
+                f"No executable candidate among {len(ranked_candidates)} ranked. "
+                + "; ".join(skipped) + ". Routed to manual review."),
+            "outcome": EXHAUSTION_OUTCOME,
+            "triggered_by": "rule",
+            "flag_type": baseline.get("flag_type"),
+            "candidate_id": None,
+        }
+
+    action = selected["action_type"]
+    rank = selected.get("rank", selected_position + 1)
+
+    detail = f"Selected rank {rank} ({action}) from {len(ranked_candidates)} ranked candidates."
+    if skipped:
+        detail += f" Fell through {len(skipped)}: " + "; ".join(skipped) + "."
+    # Disclosure, never a gate: where the fallthrough landed is only
+    # interpretable against how confident the ranking was at that point. See
+    # PHASE4_HANDOFF section 3 -- eiv_confidence is display metadata and must
+    # never become a compliance input.
+    confidence = selected.get("eiv_confidence")
+    if confidence is not None:
+        detail += f" Ranking confidence at selection: {confidence}"
+        gap = selected.get("eiv_gap_to_next")
+        if gap is not None:
+            detail += f" (gap to next {gap:.4f})"
+        detail += "."
+
+    return {
+        "action_type": action,
+        "allowed": True,
+        "reasoning": detail,
+        "outcome": "executed",
+        "triggered_by": "rule",
+        # The advisory ML field keeps one meaning across both paths: it is the
+        # legacy scorer's read on the action actually selected. The optimizer's
+        # own richer predictions are NOT copied here -- they already live in
+        # recovery_candidates, reachable through candidate_id, and folding them
+        # into this column would give one field two provenances.
+        "ml_recovery_probability": _get_recovery_probability(
+            opportunity, latest_payment, classification, action,
+            len([h for h in _get_history(opportunity_id, conn)
+                 if h["action_type"] == "retry" and h["outcome"] == "executed"]),
+            _get_history(opportunity_id, conn), int(time.time()), conn
+        ),
+        "flag_type": baseline.get("flag_type"),
+        # Deliberately no `method` key on any branch: the executor must have no
+        # field through which a payment-method change could ride.
+        "candidate_id": selected.get("candidate_id"),
+    }
+
+
 def decide_action(opportunity: dict, classification: dict, conn,
                    latest_payment: dict = None,
                    extracted_intent: str = None,
                    intent_confidence: float = None,
                    mentioned_reason: str = None,
-                   dispute_flag: bool = False) -> dict:
+                   dispute_flag: bool = False,
+                   ranked_candidates: list = None) -> dict:
     """
     Returns:
     {
@@ -187,7 +382,63 @@ def decide_action(opportunity: dict, classification: dict, conn,
     never select or trigger an action directly -- decide_action() remains sole
     compliance/control authority. Defaults preserve pre-Stage-3 behavior
     exactly when omitted (e.g. existing core_loop.py batch calls).
+
+    ranked_candidates (Phase 5) is the optimizer's FULL ranked list, not just
+    its top pick, so that a blocked top candidate can fall through to the next
+    executable one. It is advisory: the optimizer proposes an order, this
+    function decides. The list is consumed in the order given and is never
+    re-sorted here.
+
+    When ranked_candidates is None -- the default, and what every pre-Phase-5
+    caller passes -- execution proceeds directly into the body below, which is
+    unchanged from its pre-Phase-5 form. That equivalence is pinned
+    byte-for-byte by the W1 golden corpus
+    (tests/golden/phase5_decide_action_golden.json).
+
+    When a list IS supplied, the hardcoded path still runs first and still has
+    the final say on compliance: the ranked path only chooses *which* action,
+    and only in the ordinary case where the hardcoded path had already cleared
+    the opportunity to act with a retry or reminder. It never overturns a
+    block, and never overrides a terminal or safety policy (auto-escalation
+    after no response, the attempt ceiling's stop, a deeply-overdue
+    escalation).
     """
+    if ranked_candidates is not None:
+        # One recursion with ranked_candidates=None runs the unmodified
+        # hardcoded path and yields the authoritative compliance verdict.
+        baseline = decide_action(
+            opportunity, classification, conn,
+            latest_payment=latest_payment,
+            extracted_intent=extracted_intent,
+            intent_confidence=intent_confidence,
+            mentioned_reason=mentioned_reason,
+            dispute_flag=dispute_flag,
+            ranked_candidates=None,
+        )
+        # Almost every blocking rule is opportunity-scoped -- cooldown,
+        # attempt ceiling, already stopped/escalated, confidence and mismatch
+        # gating all block every candidate equally. Falling through one of
+        # those would be the ranked path overturning a compliance decision.
+        #
+        # blocked_contact_hours is the single exception, and it is exactly the
+        # case the plan's fallthrough exists for: the hardcoded path applies
+        # the window only to customer-contact actions and lets escalate bypass
+        # it, so a non-contact candidate can still be legitimately executable
+        # here. Falling through is not overturning the block -- the block
+        # stands for every action it actually covers.
+        if not baseline["allowed"] and baseline["outcome"] != "blocked_contact_hours":
+            return baseline
+        # allowed=True can still mean a policy fired rather than the ordinary
+        # pass-through: auto-escalation, the attempt ceiling's stop, or a
+        # deeply-overdue escalation. Restricting substitution to retry/reminder
+        # keeps the optimizer out of every one of those without needing to
+        # re-derive which branch produced the verdict.
+        if baseline["action_type"] not in ("retry", "reminder"):
+            return baseline
+        return _decide_action_from_ranked(
+            opportunity, classification, conn,
+            ranked_candidates, baseline, latest_payment)
+
     opportunity_id = opportunity["opportunity_id"]
     event_type = opportunity["event_type"]
     now = int(time.time())
