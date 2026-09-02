@@ -23,6 +23,13 @@ import time
 import os
 from datetime import datetime
 
+# The kill switch is reached through the module, NOT from-imported, because a
+# from-import binds the value at import time and a mid-run flip would then
+# silently fail to take effect. The constants below are the opposite case:
+# they are recorded rulings that must NOT vary at runtime, so binding them at
+# import is the point.
+from backend.engine import phase5_config as _phase5
+
 # Phase 5 declared bounds. Imported, never re-derived here: the method-change
 # boundary and the exhaustion outcome are recorded rulings, and a second
 # inline definition of either is how a boundary drifts.
@@ -403,7 +410,12 @@ def decide_action(opportunity: dict, classification: dict, conn,
     after no response, the attempt ceiling's stop, a deeply-overdue
     escalation).
     """
-    if ranked_candidates is not None:
+    # Read at call time, never captured at import, so flipping it mid-run
+    # takes effect on the very next decision. With it False a supplied ranked
+    # list is ignored entirely and execution falls through to the hardcoded
+    # body below -- byte-for-byte the pre-Phase-5 behaviour, no code revert
+    # needed.
+    if ranked_candidates is not None and _phase5.OPTIMIZER_PATHWAY_ENABLED:
         # One recursion with ranked_candidates=None runs the unmodified
         # hardcoded path and yields the authoritative compliance verdict.
         baseline = decide_action(

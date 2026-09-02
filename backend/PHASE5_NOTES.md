@@ -254,6 +254,40 @@ exemption.
 
 ---
 
+## 1b. W3/W4 rulings — the optimizer-driven pathway
+
+All approved 2026-09-02. Recorded because each one is a compliance or
+authority decision that a later reader would otherwise have to re-derive from
+the code.
+
+| # | Ruling | Where enforced |
+|---|---|---|
+| R-W3-1 | Fallthrough is permitted **only** when the baseline outcome is `blocked_contact_hours`. Every other blocking rule is opportunity-scoped and blocks all candidates equally, so falling through one would be the ranked path overturning a compliance decision. | `decide_action()` guard; `test_a_blocked_opportunity_is_never_unblocked_by_a_ranked_list` |
+| R-W3-2 | Substitution is restricted to a baseline `action_type` of `retry` or `reminder`. Keeps the optimizer out of auto-escalation, the attempt ceiling's `stop`, and deeply-overdue escalation without re-deriving which branch fired. Deliberately more conservative than "the optimizer chooses whenever compliance allows"; **not widened for now**. | `decide_action()` guard; the three not-overridden tests |
+| R-W3-3 | `payment_link` is customer contact and is gated by the contact window. It never reached that check pre-Phase-5 because it could not be a hardcoded `default_action`. SoT section 7 scopes the window to customer-facing actions and exempts escalation as internal routing. | `CONTACT_ACTIONS`; `test_payment_link_respects_the_contact_window` |
+| R-W3-4 | On exhaustion with a blocked baseline, the **specific block** is recorded, not the generic `EXHAUSTION_OUTCOME` -- "outside contact hours" tells the audit trail more than "nothing was executable". | `_decide_action_from_ranked()`; `test_an_all_contact_list_outside_the_window_keeps_the_specific_block` |
+| R-W3-5 | `ml_recovery_probability` keeps **one provenance** across both paths: the legacy scorer's read on the action actually selected. The optimizer's `predicted_p_treated` is deliberately not copied in -- it lives in `recovery_candidates`, reachable via `candidate_id`. Costs one extra call to the small legacy model; avoids giving one column two meanings. | `_decide_action_from_ranked()` |
+| R-W4-1 | The runtime kill switch `OPTIMIZER_PATHWAY_ENABLED` is separate from the per-entry-point enablement table. The table answers "should this caller compute a ranked list"; the switch answers "if one is supplied, may the rule engine act on it". The switch lives at the authority boundary so a direct caller of `decide_action()` cannot bypass it. | `phase5_config`; `decide_action()`; `tests/test_phase5_disable_path.py` |
+
+**Implementation note, W3.** `_within_contact_window()` knowingly duplicates
+the window condition inside the hardcoded body, because that body must stay
+literally unmodified and extracting a shared helper would have been a
+refactor. The duplication is pinned by a 24-hour equivalence test, so a change
+to one that is not mirrored in the other fails rather than diverging silently.
+
+**Implementation note, W4.** The kill switch is read as a module attribute,
+never `from`-imported. A from-import binds at import time, and every later
+flip would be silently ignored -- the disable path would look present and be
+inert. `test_the_kill_switch_is_not_bound_at_import_time` asserts this
+statically.
+
+**A design error worth recording.** W3's first implementation returned *every*
+blocked baseline unchanged, which silently disabled the fallthrough in the one
+case it exists for. Two tests caught it before review. The corrected rule is
+R-W3-1 above.
+
+---
+
 ## 2. Open obligations carried into later steps
 
 - **Tighten `test_method_change_has_no_reachable_executor_path`.** It

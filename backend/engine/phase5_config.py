@@ -70,6 +70,35 @@ OPTIMIZER_ENABLED_BY_ENTRY_POINT = {
 
 ENTRY_POINTS = tuple(OPTIMIZER_ENABLED_BY_ENTRY_POINT)
 
+# The runtime kill switch, distinct from the table above.
+#
+# Two different questions, deliberately separated:
+#
+#   OPTIMIZER_ENABLED_BY_ENTRY_POINT -- should this caller COMPUTE a ranked
+#       list and pass it to decide_action() at all? A deployment-shaped
+#       question, answered per entry point, currently False everywhere.
+#
+#   OPTIMIZER_PATHWAY_ENABLED -- if a ranked list IS supplied, may the rule
+#       engine act on it? A safety question, answered once, at the authority
+#       boundary itself.
+#
+# The acceptance gate requires the optimizer be disableable "via configuration
+# at runtime" with decisions "immediately reverting to pre-optimizer
+# behaviour". Putting that switch only in the pipeline would leave any direct
+# caller of decide_action() unaffected by it, so it lives here and is honoured
+# inside decide_action(): with it False, a supplied ranked list is ignored and
+# the hardcoded path runs, exactly as if no list had been passed.
+#
+# Default True: the pathway exists and is trusted. This is the emergency
+# disable, not the deployment default -- what keeps the optimizer off in
+# normal operation is the entry-point table above, all False.
+#
+# MUST be read as a module attribute (`phase5_config.OPTIMIZER_PATHWAY_ENABLED`)
+# and never `from ... import`ed, or a mid-run flip would bind to the old value
+# and silently fail to take effect. Enforced by
+# test_the_kill_switch_is_not_bound_at_import_time.
+OPTIMIZER_PATHWAY_ENABLED = True
+
 
 # --------------------------------------------------------------------------
 # Latency -- imported, never redeclared
