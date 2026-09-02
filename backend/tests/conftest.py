@@ -116,7 +116,8 @@ def seeded_db(db_path, seed_data_dir):
     The full Phase 0 bootstrap end state: schema created from DDL, seed
     JSON loaded. This is the fixture most Phase 1 gates run against.
     """
-    from backend.db.db import (create_schema, get_connection, load_customers,
+    from backend.db.db import (create_schema, get_connection,
+                               load_bank_health_observations, load_customers,
                                load_merchants, load_opportunities,
                                load_payments)
 
@@ -126,6 +127,11 @@ def seeded_db(db_path, seed_data_dir):
     load_customers(conn)
     load_opportunities(conn)
     load_payments(conn)
+    # Phase 5: without this the seeded payments carry a channel but no health
+    # series exists to look it up in, so tests would run at
+    # network_health_known=0 while the real bootstrap runs at 1.0 -- the tests
+    # would be exercising a regime production no longer has.
+    load_bank_health_observations(conn)
     yield conn
     conn.close()
 

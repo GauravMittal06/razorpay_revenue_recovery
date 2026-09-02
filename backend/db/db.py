@@ -413,14 +413,15 @@ def main():
     n_customers = load_customers(conn)
     n_opportunities = load_opportunities(conn)
     n_payments = load_payments(conn)
+    n_health = load_bank_health_observations(conn)
     conn.close()
 
     print(f"DB ready at {DB_PATH}")
     print(f"Loaded {n_merchants} merchants, {n_customers} customers, "
-          f"{n_opportunities} opportunities, {n_payments} payments")
+          f"{n_opportunities} opportunities, {n_payments} payments, "
+          f"{n_health} bank-health observations")
     print("recovery_candidates, recovery_decisions, recovery_executions, "
-          "experiment_assignment, bank_health_observations, messages, "
-          "dataset_registry created empty")
+          "experiment_assignment, messages, dataset_registry created empty")
 
 
 if __name__ == "__main__":

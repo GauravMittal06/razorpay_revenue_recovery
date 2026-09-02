@@ -50,23 +50,11 @@ METHODS = ["card", "netbanking", "upi", "wallet"]
 
 # Simulated-hour horizon the seeded network-health series spans.
 #
-# PROVISIONAL, and deliberately NOT the Data Factory's default. That default
-# is DEFAULT_HORIZON_HOURS = 24 * 120 = 2880 simulated hours; at 4h windows
-# across 72 channels that is 51,840 rows, and seed generation runs once per
-# test through the seed_data_dir fixture. Measured cost of the whole seed set:
-#
-#     horizon 2880h  ~1.4 s      51,840 rows
-#     horizon  720h   347 ms     12,960 rows
-#     horizon  168h    92 ms      3,024 rows
-#     no health        19 ms          0 rows
-#
-# 168h (one simulated week) is chosen for cost. It is defensible only because
-# the series is currently unread by the live path: mapping a live unix
-# timestamp onto this simulated-hour axis is an open decision (PHASE5_NOTES),
-# and until it is made, no live scoring selects a window. Revisit this
-# alongside that ruling -- if live lookups start landing on real windows, the
-# horizon has to cover the span they can reach.
-HEALTH_HORIZON_HOURS = 168
+# Imported, not restated: the live mapping in phase5_config takes its modulus
+# from this same value, so a live sim_hour can never fall outside the range the
+# series actually covers. Two independent literals would drift and the lookup
+# would silently start clamping.
+from backend.engine.phase5_config import HEALTH_HORIZON_HOURS  # noqa: E402
 
 # Channel assignment and the health series draw from their OWN generator,
 # never from the main `rng`. Adding draws to the main stream would shift every

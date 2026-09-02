@@ -923,20 +923,38 @@ def test_a_malformed_context_never_reaches_the_candidates_table(seeded_db):
 
 @needs_model
 @pytest.mark.gate("phase4.disclosed")
-def test_live_context_has_no_network_health_and_says_so_explicitly(seeded_db):
-    """DISCLOSED LIMITATION, asserted rather than left silent. The live schema
-    has no bank/psp column and bank_health_observations is in simulated
-    hours, so all four network-health features are unavailable at serving
-    time. Phase 3 parity-tested this exact regime. Phase 6/7 closure item."""
+def test_live_context_carries_network_health_and_says_so_explicitly(seeded_db):
+    """
+    AMENDED 2026-09-03 (Phase 5), and renamed -- it previously asserted the
+    opposite, as `test_live_context_has_no_network_health_and_says_so_
+    explicitly`.
+
+    Phase 4 wrote this to pin a disclosed limitation rather than leave it
+    silent: the live schema had no bank/psp column, bank_health_observations
+    was in simulated hours with no mapping from a live timestamp, and so all
+    four network-health features were dead at serving time (network_health_
+    known=0.0), a regime Phase 3 had parity-tested.
+
+    Phase 5 closed that gap deliberately, by approved ruling: bank/psp columns
+    on payments, a health series seeded by the Data Factory's own generator,
+    and the unix -> simulated-hour mapping in
+    phase5_config.simulated_hour_for(). This test then failed -- which is the
+    tripwire doing exactly its job, objecting that a pinned limitation had
+    moved. It is inverted here rather than deleted, so the property stays
+    pinned in its new direction: had this test not existed, closing the gap
+    would have shifted the optimizer's model inputs with nothing objecting.
+
+    Not a regression. See PHASE5_NOTES.md sections 1d-1f.
+    """
     from backend.ml import outcome_features as feats
     oid = _sample_opportunity_ids(seeded_db, 1)[0]
     context, _ = optimize.load_context(seeded_db, oid)
-    assert context["bank"] is None and context["psp"] is None
+    assert context["bank"] is not None and context["psp"] is not None
 
     lookup = inference._get_health_lookup(seeded_db)
     row = feats.build_feature_row(context, cg.do_nothing_candidate(), lookup)
-    assert row["network_health_known"] == 0.0
-    assert row["network_health_score_rolling"] is None
+    assert row["network_health_known"] == 1.0
+    assert row["network_health_score_rolling"] is not None
 
 
 # ==========================================================================

@@ -232,25 +232,37 @@ Found while building `test_everything.py`, not by a failing test — no existing
 test checks the model's directional response to a single feature.
 
 **Measurement.** Each feature varied alone, everything else held fixed, across
-every actionable seeded opportunity (n=92 in both regimes -- the same
-opportunity set, so the two columns are like-for-like):
+every actionable seeded opportunity. n=92 throughout -- the same opportunity
+set in every column, so they are like-for-like.
 
-| feature | generator's sign | at `network_health_known=0` | with real network health (`=1.0`) |
-|---|---|---|---|
-| `payment_history_score` 0.05→0.95 | **positive** | **LOWERS 91/92 (98.9%), −0.063** | **LOWERS 69/92 (75.0%), −0.030** |
-| `past_recovery_rate` 0.05→0.95 | positive | raises 81/92 (88.0%), +0.026 | raises 79/92 (85.9%), +0.032 |
-| `retry_count` 0→3 | negative (fatigue) | lowers 91/92 (98.9%), −0.025 | lowers 83/92 (90.2%), −0.018 |
-| `prior_contacts_in_window` 0→5 | negative (fatigue) | lowers 89/92 (96.7%), −0.011 | lowers 89/92 (96.7%), −0.010 |
+**CLEAN BASELINE (2026-09-03)** — contexts straight from
+`optimize.load_context()` through the real wiring, horizon 720h, all 736
+scorings confirmed at `network_health_known = 1.0`. This is the baseline the
+C2 investigation starts from:
 
-Three of four are correct in both regimes, so this is not a broken probe.
+| feature | generator's sign | model's response | n | mean Δp |
+|---|---|---|---|---|
+| `payment_history_score` 0.05→0.95 | **positive** | **LOWERS in 73/92 (79.3%)** | 92 | **−0.03542** |
+| `past_recovery_rate` 0.05→0.95 | positive | raises in 84/92 (91.3%) | 92 | +0.03572 |
+| `retry_count` 0→3 | negative (fatigue) | lowers in 82/92 (89.1%) | 92 | −0.02048 |
+| `prior_contacts_in_window` 0→5 | negative (fatigue) | lowers in 90/92 (97.8%) | 92 | −0.01181 |
 
-**Network health was not the cause.** The original measurement ran at
-`network_health_known = 0.0` and the obvious hypothesis was that the missing
-network-health features were distorting the response. Seeding real
-`bank`/`psp` and a health series (Phase 5) and re-running at
-`network_health_known = 1.0` **reduced** the inversion from 98.9% to 75.0% and
-roughly halved the mean effect, but did not remove it. It remains the only one
-of the four with the wrong sign.
+Three of four are correct, so this is not a broken probe.
+
+**Robust across every condition measured.** The inversion has now been
+observed three independent ways, and network health is ruled out as the cause:
+
+| condition | inverted | mean Δp |
+|---|---|---|
+| `known=0.0`, no channel data (original finding) | 91/92 (98.9%) | −0.063 |
+| `known=1.0`, channel attached by hand, horizon 168h | 69/92 (75.0%) | −0.030 |
+| `known=1.0`, real wiring, horizon 720h (**baseline**) | 73/92 (79.3%) | −0.035 |
+| held-out Phase 3 calibration data, `known=0.0` | 120/126 (95.2%) | −0.037 |
+
+Populating network health roughly halved the mean effect — so the missing
+features were a real partial confound — but the sign is still wrong in about
+four cases out of five, and `payment_history_score` remains the only one of
+the four features with the wrong sign in every condition tested.
 
 **The generator is unambiguously monotonic positive**
 (`candidate_outcome_dataset.py:76-77, 86-89`):
@@ -470,6 +482,44 @@ horizon then reads an identical constant while the feature asserts the data is
 good. This is strictly worse than `known=0`, because a constant that claims to
 be real is indistinguishable from real data the model can learn from. Any
 mapping that can walk off the end of the series inherits this failure mode.
+
+---
+
+## 1g. A Phase 4 gate test whose limitation we deliberately closed
+
+`test_phase4_optimizer.py::test_live_context_has_no_network_health_and_says_so_explicitly`
+**failed when the network-health wiring landed. That was the test working, not
+a regression.**
+
+Phase 4 wrote it to pin a disclosed limitation rather than let it pass
+silently — the live context had no `bank`/`psp` and every scoring ran at
+`network_health_known = 0.0`. Phase 5 closed exactly that gap, by approved
+ruling. The test objected, which is what a tripwire on a pinned property is
+for.
+
+**Amended 2026-09-03**, dated and evidence-backed, and **renamed** to
+`test_live_context_carries_network_health_and_says_so_explicitly` since
+"has_no" no longer described it. Assertions inverted:
+
+| before | after |
+|---|---|
+| `context["bank"] is None and context["psp"] is None` | `... is not None` |
+| `row["network_health_known"] == 0.0` | `== 1.0` |
+| `row["network_health_score_rolling"] is None` | `is not None` |
+
+**Inverted, not deleted.** The property stays pinned in its new direction. The
+episode is itself the argument for keeping such tests: had it not existed,
+closing the gap would have changed the optimizer's model inputs across every
+live scoring with nothing objecting. That is also why section 1f's variance
+tripwire was added on the other side of the same feature.
+
+**A second failure in the same run was mine**, not the product's:
+`test_the_seeded_horizon_and_the_mapping_modulus_are_one_constant` used `is`
+to compare two ints. It held at 2880 by accident and broke at 720 — neither is
+in CPython's small-integer cache, so identity was never guaranteed. Corrected
+to `==`, plus an AST check that the seed generator *imports* the constant
+rather than defining a second literal, which is the property the test was
+actually reaching for.
 
 ---
 

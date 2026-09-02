@@ -237,6 +237,77 @@ DISPATCH_REVALIDATES_VIA_DECIDE_ACTION = True
 
 
 # --------------------------------------------------------------------------
+# Network health: the unix -> simulated-hour mapping
+# --------------------------------------------------------------------------
+# Ruling of 2026-09-03, "Option A". bank_health_observations stores its windows
+# in simulated hours starting at 0; a live opportunity has a unix timestamp.
+# There was no correspondence between the two, so every live scoring landed at
+# network_health_known=0 and the four network-health features were dead.
+#
+#     sim_hour = WINDOW + ((now_unix - ORIGIN) / 3600) mod (HORIZON - WINDOW)
+#
+# Why modulo rather than a clamped linear map: the lookup is NOT honest past
+# the end of the series. For as_of beyond the last window it clamps
+# (outcome_features.py:262, `lo > hi` -> `lo = hi`) and returns the single
+# final 4h observation with known=True, forever -- every opportunity reading an
+# identical constant while the feature asserts the data is real. That is worse
+# than known=0, because a constant claiming to be real is indistinguishable
+# from data the model can learn from. A linear map reaches that state on a
+# date, silently. Modulo structurally cannot: it always lands inside the
+# series.
+#
+# The cost of modulo is a discontinuity at the wrap -- two scorings either side
+# of it read opposite ends of the series -- and a false periodicity with the
+# horizon's period. Both were accepted as bounded and visible, against a
+# failure mode that is neither.
+#
+# The offset by WINDOW and the reduced span keep sim_hour inside
+# [WINDOW, HORIZON), which is exactly the range where the lookup is truthful:
+# below WINDOW no observation has closed yet (known=False), and at or past
+# HORIZON the clamp above takes over.
+NETWORK_HEALTH_ORIGIN_UNIX = 1767225600      # 2026-01-01T00:00:00Z, arbitrary but fixed
+
+# Simulated-hour span the seeded series covers.
+#
+# It must stay materially larger than
+# outcome_features.NETWORK_HEALTH_WINDOW_HOURS (168.0), the trailing average's
+# span: at horizon == trailing span every query averages from window 0 and the
+# rolling value degenerates into a prefix average. Measured rolling-score
+# spread by horizon -- 168h: 0.0864, 720h: 0.1572, 2880h: 0.2119.
+#
+# Set to 2880 first, matching the Data Factory's DEFAULT_HORIZON_HOURS
+# (24 * 120), and reduced to 720 on the measured cost that the ruling named as
+# the fallback trigger:
+#
+#     seed generation, 2880h : 1285 ms   51,840 rows
+#     seed generation,  720h :  347 ms   12,960 rows
+#     full pytest suite, 168h:  204 s
+#     full pytest suite, 2880h: >20 min, stopped before completing
+#
+# The seed set is regenerated once per test through the seed_data_dir fixture,
+# so the per-generation cost multiplies by roughly the test count. 720h keeps
+# the trailing/horizon ratio at 0.23 -- comfortably non-degenerate, 0.157
+# rolling spread against 0.212 at 2880h -- for about a quarter of the cost.
+HEALTH_HORIZON_HOURS = 720
+
+# Must equal bank_health_timeseries.WINDOW_HOURS; asserted in _check().
+HEALTH_WINDOW_HOURS = 4
+
+
+def simulated_hour_for(now_unix) -> float:
+    """
+    Map a live unix timestamp onto the seeded series' simulated-hour axis.
+
+    Always returns a value in [HEALTH_WINDOW_HOURS, HEALTH_HORIZON_HOURS), so
+    a lookup against a fully-seeded series always resolves to real observations
+    and never to the clamped final-window state.
+    """
+    span = HEALTH_HORIZON_HOURS - HEALTH_WINDOW_HOURS
+    elapsed_hours = (float(now_unix) - NETWORK_HEALTH_ORIGIN_UNIX) / SECONDS_PER_HOUR
+    return HEALTH_WINDOW_HOURS + (elapsed_hours % span)
+
+
+# --------------------------------------------------------------------------
 # Tolerances for Phase 5's own gates
 # --------------------------------------------------------------------------
 # Both are determinism properties, not statistical ones -- there is no
@@ -294,6 +365,21 @@ def _check() -> None:
 
     if set(OPTIMIZER_ENABLED_BY_ENTRY_POINT) != set(ENTRY_POINTS):
         raise ValueError("entry-point table and ENTRY_POINTS disagree")
+
+    from backend.data_factory.bank_health_timeseries import WINDOW_HOURS
+    if HEALTH_WINDOW_HOURS != WINDOW_HOURS:
+        raise ValueError(
+            f"HEALTH_WINDOW_HOURS ({HEALTH_WINDOW_HOURS}) disagrees with the "
+            f"generator's WINDOW_HOURS ({WINDOW_HOURS}); the mapping's safe "
+            "range would be wrong")
+
+    from backend.ml.outcome_features import NETWORK_HEALTH_WINDOW_HOURS
+    if HEALTH_HORIZON_HOURS <= NETWORK_HEALTH_WINDOW_HOURS:
+        raise ValueError(
+            f"HEALTH_HORIZON_HOURS ({HEALTH_HORIZON_HOURS}) must exceed the "
+            f"trailing average span ({NETWORK_HEALTH_WINDOW_HOURS}), or every "
+            "query averages from window 0 and the rolling value degenerates "
+            "into a prefix average")
 
 
 _check()
