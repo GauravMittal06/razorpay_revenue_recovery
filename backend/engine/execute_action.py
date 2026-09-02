@@ -19,6 +19,12 @@ as unrecovered by policy, not by a later payment-success event.
 
 import time
 
+from backend.data_factory.candidate_generation import TIMING_HOURS
+from backend.db.db import EXECUTION_STATES
+from backend.engine.phase5_config import (IMMEDIATE_TIMING_HOURS,
+                                          MAX_SCHEDULE_HORIZON_HOURS,
+                                          SECONDS_PER_HOUR)
+
 # action_type -> opportunities.status when the decision executes
 STATUS_MAP = {
     "retry": "recovering",
@@ -26,6 +32,21 @@ STATUS_MAP = {
     "escalate": "escalated",
     "stop": "stopped",
 }
+
+# Actions whose execution closes the opportunity as a terminal policy
+# resolution. Kept explicit so the resolution block below can never fire for a
+# merely-scheduled action, only for one that has actually executed.
+TERMINAL_ACTIONS = ("stop",)
+
+# Phase 5: an approved action is either dispatched now or queued for later.
+# Which one is decided here, in the executor, from the timing attribute of the
+# candidate the rule engine approved -- "the executor decides timing of an
+# already-approved action, never whether to act" (EXECUTION_PLAN.md:83).
+#
+# Nothing about compliance is reconsidered at this point. execute_action()
+# writes what decide_action() decided; it does not re-check cooldown, contact
+# hours or eligibility, and must never gain such a check.
+SCHEDULED_STATE = "scheduled"
 
 # action_type -> recovery_executions.state. escalate/stop are internal
 # routing/policy actions with nothing to "dispatch" to a customer, so they
@@ -39,6 +60,45 @@ EXECUTION_STATE_MAP = {
 }
 
 
+def _approved_candidate(conn, candidate_id):
+    """The recovery_candidates row the rule engine approved, or None."""
+    if candidate_id is None:
+        return None
+    row = conn.execute(
+        "SELECT * FROM recovery_candidates WHERE candidate_id = ?",
+        (candidate_id,),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def _schedule_offset_hours(candidate) -> float:
+    """
+    How far ahead the approved candidate should fire, in hours.
+
+    Read from the candidate's own `timing`, mapped through the shared
+    generator's TIMING_HOURS -- the same table the optimizer scored against, so
+    the executor cannot develop a second opinion about what "4h" means. A
+    decision with no candidate behind it (every pre-Phase-5 caller) has no
+    timing and fires immediately, which is the existing behaviour.
+    """
+    if not candidate:
+        return IMMEDIATE_TIMING_HOURS
+    timing = candidate.get("timing")
+    if timing is None:
+        return IMMEDIATE_TIMING_HOURS
+    if timing not in TIMING_HOURS:
+        raise ValueError(
+            f"candidate {candidate.get('candidate_id')} carries timing "
+            f"{timing!r}, which is not in the shared generator's TIMING_HOURS "
+            f"({sorted(TIMING_HOURS)})")
+    hours = TIMING_HOURS[timing]
+    if hours > MAX_SCHEDULE_HORIZON_HOURS:
+        raise ValueError(
+            f"timing {timing!r} is {hours}h, beyond the declared scheduling "
+            f"horizon of {MAX_SCHEDULE_HORIZON_HOURS}h")
+    return hours
+
+
 def execute_action(opportunity: dict, decision: dict, conn) -> dict:
     opportunity_id = opportunity["opportunity_id"]
     now = int(time.time())
@@ -48,10 +108,17 @@ def execute_action(opportunity: dict, decision: dict, conn) -> dict:
         INSERT INTO recovery_decisions
         (opportunity_id, candidate_id, action_type, outcome, reasoning,
          triggered_by, ml_recovery_probability, flag_type, timestamp)
-        VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             opportunity_id,
+            # Phase 5: links the decision to the exact candidate the rule
+            # engine approved. NULL for every hardcoded-path decision, which
+            # is what the UNIQUE index on this column is built to allow.
+            # A candidate_id that does not exist raises a FOREIGN KEY error
+            # rather than being silently coerced to NULL -- an invented
+            # candidate reference is a defect, not something to paper over.
+            decision.get("candidate_id"),
             decision["action_type"],
             decision["outcome"],
             decision["reasoning"],
@@ -79,13 +146,43 @@ def execute_action(opportunity: dict, decision: dict, conn) -> dict:
     if decision["outcome"] == "executed":
         action_type = decision["action_type"]
 
+        candidate = _approved_candidate(conn, decision.get("candidate_id"))
+        offset_hours = _schedule_offset_hours(candidate)
+
+        # An approved action either fires now or waits. Either way this is one
+        # row, mutated in place by the dispatcher later -- never a second row,
+        # which the UNIQUE index on decision_id enforces.
+        if offset_hours > IMMEDIATE_TIMING_HOURS:
+            state = SCHEDULED_STATE
+            scheduled_for = now + int(offset_hours * SECONDS_PER_HOUR)
+            executed_at = None
+        else:
+            state = EXECUTION_STATE_MAP.get(action_type, "executed")
+            scheduled_for = None
+            executed_at = now
+
+        if state not in EXECUTION_STATES:
+            raise ValueError(
+                f"{state!r} is not in the closed execution-state vocabulary "
+                f"{EXECUTION_STATES}")
+
         conn.execute(
             """
-            INSERT INTO recovery_executions (decision_id, state, executed_at, channel)
-            VALUES (?, ?, ?, NULL)
+            INSERT INTO recovery_executions
+            (decision_id, state, scheduled_for, executed_at, channel)
+            VALUES (?, ?, ?, ?, NULL)
             """,
-            (decision_id, EXECUTION_STATE_MAP.get(action_type, "executed"), now),
+            (decision_id, state, scheduled_for, executed_at),
         )
+
+        # `selected` means the rule engine approved this candidate for
+        # execution. The optimizer writes every row with selected=0 and has no
+        # authority to grant it; this is the one place it is set.
+        if candidate is not None:
+            conn.execute(
+                "UPDATE recovery_candidates SET selected = 1 WHERE candidate_id = ?",
+                (decision["candidate_id"],),
+            )
 
         new_status = STATUS_MAP.get(action_type, opportunity["status"])
 
@@ -97,7 +194,12 @@ def execute_action(opportunity: dict, decision: dict, conn) -> dict:
         # resolution regardless of which path closed it. "escalate" is
         # deliberately NOT resolved here -- it hands off to a human queue,
         # outcome still pending.
-        if action_type == "stop":
+        # `state != SCHEDULED_STATE` is defensive rather than reachable today:
+        # `stop` is never an optimizer candidate, so it always fires
+        # immediately. It is guarded anyway because closing an opportunity as
+        # unrecovered on the strength of an action that has not happened yet
+        # would be a business-outcome write with nothing behind it.
+        if action_type in TERMINAL_ACTIONS and state != SCHEDULED_STATE:
             conn.execute(
                 """
                 UPDATE opportunities
