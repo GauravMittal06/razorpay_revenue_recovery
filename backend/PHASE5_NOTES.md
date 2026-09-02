@@ -410,6 +410,69 @@ revisited alongside the mapping ruling.
 
 ---
 
+## 1e. Frozen-list exception — `optimize.py` network-channel plumbing
+
+**Granted 2026-09-03. NOT YET EXERCISED** — held pending the unix → simulated-
+hour mapping ruling, at the grantor's instruction, so the plumbing cannot land
+without a correct mapping behind it.
+
+| | |
+|---|---|
+| Frozen input | `backend/engine/optimize.py` (Phase 4 hand-off, section 4) |
+| Scope of exception | the three hardcoded lines in `build_optimizer_context()`: `bank=None`, `psp=None`, `decision_time_hours=0.0` |
+| Permitted change | read the real `(bank, psp)` off the opportunity's latest payment; supply a real `decision_time_hours` |
+| NOT permitted | any change to candidate generation, scoring, EIV arithmetic, ranking, or persistence |
+
+**Why it is narrow.** `bank`, `psp` and `decision_time_hours` are **not model
+features** — verified against `outcome_features.ALL_FEATURES`, which contains
+26 entries and none of these three. They are lookup keys only. So this change
+can affect the model through exactly four features
+(`network_health_score_rolling`, `..._success_rate_rolling`,
+`..._timeout_rate_rolling`, `network_health_known`) and through nothing else.
+That is what makes it plumbing rather than a scoring-logic change.
+
+**Evidence backing it.** The seeded data is already proven sufficient: with the
+channel attached by hand, `network_health_known` reads `1.0` with live values
+(`health_score=0.687`, `success_rate=0.839`, `timeout_rate=0.110`), while the
+same context through `optimize.load_context()` reads `0.0`. Section 1d.
+
+---
+
+## 1f. The unix → simulated-hour mapping — measured constraints
+
+Three facts, measured, that any mapping has to respect.
+
+**1. The horizon must be materially larger than the trailing window.**
+`NETWORK_HEALTH_WINDOW_HOURS = 168.0` is the trailing span the rolling average
+covers; observations are 4h windows. If the seeded horizon equals the trailing
+span, every query averages from window 0 and the "recent health" semantics
+collapse into a prefix average. Measured spread of the rolling `health_score`
+across a horizon:
+
+| horizon | windows/channel | rolling score spread | std | trailing/horizon |
+|---|---|---|---|---|
+| 168h | 42 | 0.0864 | 0.0258 | **1.00 — degenerate** |
+| 720h | 180 | 0.1572 | 0.0429 | 0.23 |
+| 2880h | 720 | 0.2119 | 0.0500 | 0.06 |
+
+The current `HEALTH_HORIZON_HOURS = 168` compresses the signal ~2.5x and is
+structurally wrong, not merely provisional. It must rise with whichever
+mapping is chosen.
+
+**2. Before the first window closes, the lookup is honest.** `as_of < 4.0`
+gives `hi < 0` → `known=False`. Clean.
+
+**3. Past the end of the series, the lookup is NOT honest.** For
+`as_of > max(window_end)`, `hi` clamps to the last index and `lo > hi` is
+corrected to `lo = hi` (`outcome_features.py:262`), so it returns **the single
+final 4h observation, with `known=True`**, forever. Every opportunity past the
+horizon then reads an identical constant while the feature asserts the data is
+good. This is strictly worse than `known=0`, because a constant that claims to
+be real is indistinguishable from real data the model can learn from. Any
+mapping that can walk off the end of the series inherits this failure mode.
+
+---
+
 ## 1c. W5 findings — the write side
 
 ### execute_action() is NOT idempotent at the call level
