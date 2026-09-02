@@ -21,7 +21,8 @@ import time
 
 from backend.data_factory.candidate_generation import TIMING_HOURS
 from backend.db.db import EXECUTION_STATES
-from backend.engine.phase5_config import (IMMEDIATE_TIMING_HOURS,
+from backend.engine.phase5_config import (EVALUABLE_BUT_NOT_EXECUTABLE_ACTIONS,
+                                          IMMEDIATE_TIMING_HOURS,
                                           MAX_SCHEDULE_HORIZON_HOURS,
                                           SECONDS_PER_HOUR)
 
@@ -140,7 +141,20 @@ def execute_action(opportunity: dict, decision: dict, conn) -> dict:
 
     # flagged_manual_review is a hard stop: log only, no recovery side effects.
     # Same "log but don't execute" pattern as the existing blocked outcomes.
-    if decision["outcome"] == "flagged_manual_review" or decision["action_type"] is None:
+    #
+    # Phase 5 adds the evaluable-but-not-executable actions to this path. A
+    # `do_nothing` decision previously fell through to the executed branch,
+    # where EXECUTION_STATE_MAP.get(action, "executed") hit its default and
+    # wrote a recovery_executions row asserting a dispatch that never
+    # happened -- a fabricated execution record, and a downstream inflation of
+    # any count of actions taken. Deciding to act by not acting is a real
+    # decision and is logged as one; it is not an execution.
+    #
+    # Keyed off the declared vocabulary rather than the literal "do_nothing",
+    # so an action added to that list is covered here automatically.
+    if (decision["outcome"] == "flagged_manual_review"
+            or decision["action_type"] is None
+            or decision["action_type"] in EVALUABLE_BUT_NOT_EXECUTABLE_ACTIONS):
         conn.commit()
         return {
             "opportunity_id": opportunity_id,

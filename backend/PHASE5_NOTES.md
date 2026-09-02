@@ -288,6 +288,85 @@ R-W3-1 above.
 
 ---
 
+## 1c. W5 findings — the write side
+
+### execute_action() is NOT idempotent at the call level
+
+Measured, not assumed. Calling `execute_action()` twice with the same decision
+dict produces **two decisions and two executions**:
+
+    call 1 decision_id      : 1
+    call 2 decision_id      : 2
+    recovery_decisions rows : 2
+    recovery_executions rows: 2
+
+The `UNIQUE` index on `recovery_executions.decision_id` does **not** prevent
+this, because each call mints a *new* decision row to hang the execution off.
+What the index does prevent, verified separately, is a second execution row
+for an existing decision:
+
+    second execution row for the SAME decision_id: REJECTED
+      -> UNIQUE constraint failed: recovery_executions.decision_id
+
+**Why this is safe for W6 as designed, and what would break it.** The
+dispatcher advances an execution row that already exists (an `UPDATE`), rather
+than calling `execute_action()` again. The idempotent-dispatch gate is
+therefore satisfiable through the index. If W6 is ever implemented by
+re-calling `execute_action()`, an idempotency key on the decision becomes
+mandatory. Written down at
+`test_calling_execute_action_twice_creates_two_decisions_not_one`, which
+asserts the limitation rather than a guarantee that does not exist.
+
+Not fixed in W5: adding an idempotency key is outside the step's scope and
+would change the decision contract. Flagged, not silently absorbed.
+
+### Foreign keys are enforced
+
+`PRAGMA foreign_keys` is on, so `recovery_decisions.candidate_id` must
+reference a real `recovery_candidates` row. W5 relies on this: an invented
+candidate reference raises `IntegrityError` rather than being coerced to NULL,
+because a decision claiming to come from a candidate that was never scored is
+a defect worth surfacing.
+
+### The do_nothing defect, before and after
+
+Before, a `do_nothing` decision reached the executed branch and
+`EXECUTION_STATE_MAP.get(action, "executed")` hit its default:
+
+    recovery_executions rows: 1
+      -> {'state': 'executed', 'scheduled_for': None, 'executed_at': 1788376460}
+
+After:
+
+    recovery_decisions rows : 1
+    recovery_executions rows: 0
+
+The guard is keyed off `EVALUABLE_BUT_NOT_EXECUTABLE_ACTIONS` rather than the
+literal `"do_nothing"`, so anything added to that list is covered
+automatically. Note this defect was never reachable *through* `decide_action()`
+-- the ranked path skips evaluable-only actions -- but `execute_action()` is a
+public function and was writing fabricated execution records for anyone who
+called it directly.
+
+### Two permanent-gate amendments, both dated 2026-09-02
+
+`test_executor_action_set_matches_the_decider` was pinned to the four
+pre-Phase-5 actions and tripped when `payment_link` was added, exactly as the
+Phase 5 plan predicted it would. Amended to assert `STATUS_MAP` against
+`phase5_config.EXECUTABLE_ACTIONS` -- the declared vocabulary -- instead of a
+second hardcoded literal. **Strictly stronger than what it replaced:** the
+executor and the declaration can no longer drift in either direction, and
+widening the vocabulary now requires a visible edit to a config file whose own
+tests assert it against `EXECUTION_PLAN.md`. The bar was not moved to obtain a
+pass.
+
+`test_payment_link_is_the_only_declared_action_the_executor_still_lacks` was
+the W2 forcing function. It tripped with `executor gap changed: []` and was
+tightened, per the instruction it carried, to assert the gap is empty in both
+directions.
+
+---
+
 ## 2. Open obligations carried into later steps
 
 - **Tighten `test_method_change_has_no_reachable_executor_path`.** It
