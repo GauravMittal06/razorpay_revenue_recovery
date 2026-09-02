@@ -210,19 +210,24 @@ def test_the_module_still_imports_clean_after_the_negative_controls():
 # --------------------------------------------------------------------------
 
 @pytest.mark.gate("phase5.declared_bounds")
-def test_payment_link_is_the_only_declared_action_the_executor_still_lacks():
+def test_the_executor_can_dispatch_every_declared_executable_action():
     """
-    Pins the one known gap between the declared executable vocabulary and what
-    execute_action can actually dispatch, so W5 closing it is a deliberate,
-    visible step.
+    TIGHTENED 2026-09-02 (W5), exactly as this test's earlier form instructed.
 
-    EXPECTED TO CHANGE IN W5: once payment_link is added to STATUS_MAP this
-    test fails, and the correct response is to tighten it to plain equality --
-    not to widen the expected gap.
+    It was planted at W2 as a forcing function, asserting
+    `missing == {"payment_link"}` -- pinning the one known gap between the
+    declared executable vocabulary and what execute_action could dispatch, so
+    that closing it would be a deliberate, visible step rather than a silent
+    widening. Adding payment_link to STATUS_MAP tripped it as designed
+    (observed: "executor gap changed: []"), and the instruction it carried was
+    to tighten to plain equality rather than widen the expected gap. Done.
     """
     from backend.engine.execute_action import STATUS_MAP
 
     missing = set(cfg.EXECUTABLE_ACTIONS) - set(STATUS_MAP)
-    assert missing == {"payment_link"}, (
-        f"executor gap changed: {sorted(missing)}. If payment_link was just "
-        "added, tighten this test to `assert not missing`.")
+    assert not missing, (
+        f"declared executable but not dispatchable: {sorted(missing)}")
+
+    extra = set(STATUS_MAP) - set(cfg.EXECUTABLE_ACTIONS)
+    assert not extra, (
+        f"dispatchable but not declared executable: {sorted(extra)}")

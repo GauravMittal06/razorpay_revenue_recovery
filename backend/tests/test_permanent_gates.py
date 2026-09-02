@@ -361,14 +361,32 @@ def test_method_change_has_no_reachable_executor_path(source_files):
 @pytest.mark.gate("permanent.single_authority")
 def test_executor_action_set_matches_the_decider():
     """
-    The executor must be able to carry out exactly the four actions the rule
-    engine can select, and no others. A fifth key in STATUS_MAP is an
-    executable action with no compliance branch behind it.
+    The executor must be able to carry out exactly the actions the rule engine
+    can select, and no others. An extra key in STATUS_MAP is an executable
+    action with no compliance branch behind it.
+
+    AMENDED 2026-09-02 (Phase 5, W5). The set was pinned to the four actions
+    {retry, reminder, escalate, stop} that the pre-Phase-5 hardcoded lookup
+    could produce. Phase 5 adds `payment_link`, which EXECUTION_PLAN.md:206
+    names in the executable vocabulary verbatim -- "retry, reminder (with a
+    channel attribute), payment link, escalate, stop" -- and which has been a
+    first-class optimizer candidate since Phase 4 with its own cost term and
+    eligibility rules. Before the amendment the optimizer's top-ranked pick
+    could be structurally undispatchable.
+
+    The bar was not loosened to accommodate the change: the assertion is now
+    tied to phase5_config.EXECUTABLE_ACTIONS, the declared vocabulary, instead
+    of to a second hardcoded literal. That is strictly stronger than what it
+    replaced -- the executor and the declaration can no longer drift apart in
+    either direction, and widening the vocabulary now requires a visible edit
+    to a config file whose own tests assert it against EXECUTION_PLAN.md.
     """
     from backend.engine.execute_action import STATUS_MAP
+    from backend.engine.phase5_config import EXECUTABLE_ACTIONS
 
-    assert set(STATUS_MAP) == {"retry", "reminder", "escalate", "stop"}, \
-        f"executor action set drifted: {sorted(STATUS_MAP)}"
+    assert set(STATUS_MAP) == set(EXECUTABLE_ACTIONS), (
+        f"executor action set {sorted(STATUS_MAP)} does not match the declared "
+        f"executable vocabulary {sorted(EXECUTABLE_ACTIONS)}")
 
 
 # --------------------------------------------------------------------------

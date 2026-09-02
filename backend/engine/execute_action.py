@@ -29,6 +29,13 @@ from backend.engine.phase5_config import (IMMEDIATE_TIMING_HOURS,
 STATUS_MAP = {
     "retry": "recovering",
     "reminder": "recovering",
+    # Phase 5: payment_link has been a first-class optimizer candidate since
+    # Phase 4, with its own cost term and eligibility rules, but had no
+    # executor support -- so the optimizer's top pick could be structurally
+    # undispatchable. EXECUTION_PLAN.md:206 names it in the executable
+    # vocabulary. Like retry and reminder it is customer contact, so it leaves
+    # the opportunity in `recovering`.
+    "payment_link": "recovering",
     "escalate": "escalated",
     "stop": "stopped",
 }
@@ -55,6 +62,7 @@ SCHEDULED_STATE = "scheduled"
 EXECUTION_STATE_MAP = {
     "retry": "executed",
     "reminder": "executed",
+    "payment_link": "executed",
     "escalate": "executed",
     "stop": "executed",
 }
