@@ -29,9 +29,17 @@ specific, and is reinforced by a permanent invariant
 (`EXECUTION_PLAN.md:301`, "Payment-method changes are never dispatched
 autonomously, structurally").
 
-**Left unresolved on purpose:** `SoT.md:63` has not been amended. Anyone
-reading SoT alone will still believe the capability is dispatchable. Worth an
-explicit amendment at Phase 5 sign-off or later.
+**Resolved 2026-09-02.** `SoT.md:63` was amended: "alternate payment method"
+was removed from the dispatchable-tools list, and a sentence was added
+recording that it is ranked as a candidate but never dispatched autonomously,
+pointing here for the rationale. The edit was deliberately minimal -- one line
+changed in a 205-line file, nothing else moved.
+
+Note that `SoT.md:59` (Section 3.5, Optimize) still reads "Rank every eligible
+**(action, timing, payment-method)** combination", and that is *correct* and
+was left alone. The optimizer genuinely does rank payment-method combinations;
+the drift was only ever in what the executor may dispatch. The two sections
+now express the evaluable/executable split rather than contradicting it.
 
 **Structural note that matters more than the drift.** There is no
 `method_change` action type anywhere in the system. The candidate vocabulary
@@ -203,6 +211,49 @@ plausible, since nothing now rejects the string at write time.
 
 ---
 
+## 1a. PROJECT CLOSEOUT LIST — must be resolved before final sign-off
+
+> **Carry this section forward verbatim into every subsequent phase's notes
+> and hand-off document.** It is not a Phase 5 to-do list. Items here are
+> deferred by explicit ruling, not forgotten, and each one must be either
+> resolved or formally retired with a recorded reason before the project is
+> signed off. An item may leave this list in exactly two ways: it is fixed, or
+> a ruling retires it and the reason is written down here. It may never leave
+> by being absorbed into a "known failures" count and stopping being counted.
+
+| # | Item | Status | Ruled |
+|---|---|---|---|
+| C1 | `test_higher_true_incremental_value_ranks_above_lower` (Phase 4 G7) still encodes the retracted methodology -- probability ground truth compared against rupee-space model output on constructed contexts -- and therefore still fails. | **Open.** Deferred out of Phase 5 scope. | 2026-09-02 |
+
+### C1 detail
+
+**Why it is deferred and not simply fixed now.** The ranking-correctness
+property this test was meant to establish is already covered by Phase 4's G7
+gate, which passes at 0.966 / 0.967 on frozen seed-42 / seed-43 Phase 3 data
+against a 0.90 bar -- on real evaluation data rather than constructed
+contexts. The failing test duplicates that property using a methodology that
+was retracted and recorded as wrong (`PHASE4_NOTES.md` section 8.3). Fixing it
+inside Phase 5 would mean re-deriving a Phase 4 evaluation while Phase 5's own
+frozen-input contract forbids touching the modules involved.
+
+**What "resolved" requires.** Either:
+
+- **re-implemented** so it compares like with like -- rupee-space model output
+  against rupee-space ground truth, or probability against probability, on
+  evaluation data rather than constructed contexts; or
+- **formally retired**, with the reason recorded here, on the grounds that G7
+  already covers the property and a second, weaker test of the same thing has
+  negative value.
+
+**Why it must not be left to linger.** It is currently one of the 16 known
+failures the suite carries. A known-failure count is a place where a real
+defect can hide in plain sight: each individual entry is "expected", so the
+aggregate stops being read. This item exists to make sure at least this
+entry has a forcing deadline attached to it rather than an indefinite
+exemption.
+
+---
+
 ## 2. Open obligations carried into later steps
 
 - **Tighten `test_method_change_has_no_reachable_executor_path`.** It
@@ -213,9 +264,10 @@ plausible, since nothing now rejects the string at write time.
   tightened test still proves nothing, because no such token can exist — so it
   is retained only as a cheap tripwire, and the boundary is re-verified for
   real by new structural tests in W8.
-- **Ruling 10 — unaddressed.** Whether re-implementing the retracted G7 test
-  (`test_higher_true_incremental_value_ranks_above_lower`) is Phase 5 scope has
-  not been ruled on. Untouched; still one of the 16 known failures.
+- **Retracted G7 test — ruled out of Phase 5 scope on 2026-09-02, and
+  escalated to the project closeout list as item C1 (section 1a).** Untouched;
+  still one of the 16 known failures. Tracked there rather than here, because
+  it must survive past this phase's hand-off.
 - **`do_nothing` would fabricate an execution row.** A `do_nothing` decision
   reaching `execute_action()` hits the `EXECUTION_STATE_MAP` default and
   INSERTs a `recovery_executions` row with state `executed`, asserting a

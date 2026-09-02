@@ -60,7 +60,7 @@ Rank every eligible **(action, timing, payment-method)** combination for an oppo
 The optimizer **proposes**; it does not have authority to act. See Section 5.
 
 ### 3.6 Act
-The rule engine validates the optimizer's top-ranked proposal against hard compliance and safety constraints, and only then dispatches execution to the appropriate tool: retry, payment link, alternate payment method, outreach (WhatsApp/email/SMS via existing channels), escalation to a human queue, or deliberate no-action. Every dispatch is logged before and after execution — no silent actions.
+The rule engine validates the optimizer's top-ranked proposal against hard compliance and safety constraints, and only then dispatches execution to the appropriate tool: retry, payment link, outreach (WhatsApp/email/SMS via existing channels), escalation to a human queue, or deliberate no-action. Every dispatch is logged before and after execution — no silent actions. Switching a customer to an alternate payment method is deliberately absent from that list: it is ranked as a candidate (see Section 3.5) but is never dispatched autonomously — see PHASE5_NOTES.md section 0.1 for the rationale.
 
 ### 3.7 Observe
 Every action and its outcome (recovered / not recovered / partially recovered, time-to-resolution, customer response) is written to an append-only audit trail. This trail is the product's credibility mechanism: every number the Control Tower shows must trace back to a live, inspectable record, never only to narration.
