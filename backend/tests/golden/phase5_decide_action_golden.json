@@ -1,0 +1,217 @@
+{
+  "captured_against": "decide_action.py prior to any Phase 5 modification",
+  "decisions": {
+    "agent_message_is_not_a_reply": {
+      "action_type": "escalate",
+      "allowed": true,
+      "flag_type": null,
+      "ml_recovery_probability": 0.9469,
+      "outcome": "executed",
+      "reasoning": "No customer response after 7 days. Auto-escalating to human queue.",
+      "triggered_by": "rule"
+    },
+    "already_escalated": {
+      "action_type": "escalate",
+      "allowed": false,
+      "outcome": "blocked_already_escalated",
+      "reasoning": "Case already escalated to human queue. Automated actions suspended.",
+      "triggered_by": "rule"
+    },
+    "already_stopped": {
+      "action_type": "stop",
+      "allowed": false,
+      "outcome": "blocked_already_stopped",
+      "reasoning": "Case already stopped. No further contact permitted.",
+      "triggered_by": "rule"
+    },
+    "blocked_attempts_do_not_consume_budget": {
+      "action_type": "retry",
+      "allowed": true,
+      "flag_type": null,
+      "ml_recovery_probability": 0.9569,
+      "outcome": "executed",
+      "reasoning": "Compliance checks passed. Executing retry (attempt 1/3).",
+      "triggered_by": "rule"
+    },
+    "clean_checkout_abandoned": {
+      "action_type": "reminder",
+      "allowed": true,
+      "flag_type": null,
+      "ml_recovery_probability": 0.9067,
+      "outcome": "executed",
+      "reasoning": "Compliance checks passed. Executing reminder (attempt 1/3).",
+      "triggered_by": "rule"
+    },
+    "clean_invoice_overdue": {
+      "action_type": "reminder",
+      "allowed": true,
+      "flag_type": null,
+      "ml_recovery_probability": 0.9451,
+      "outcome": "executed",
+      "reasoning": "Compliance checks passed. Executing reminder (attempt 1/3).",
+      "triggered_by": "rule"
+    },
+    "clean_payment_failed": {
+      "action_type": "retry",
+      "allowed": true,
+      "flag_type": null,
+      "ml_recovery_probability": 0.9684,
+      "outcome": "executed",
+      "reasoning": "Compliance checks passed. Executing retry (attempt 1/3).",
+      "triggered_by": "rule"
+    },
+    "confidence_at_threshold": {
+      "action_type": "retry",
+      "allowed": true,
+      "flag_type": null,
+      "ml_recovery_probability": 0.9644,
+      "outcome": "executed",
+      "reasoning": "Compliance checks passed. Executing retry (attempt 1/3).",
+      "triggered_by": "rule"
+    },
+    "contact_window_lower_boundary": {
+      "action_type": "retry",
+      "allowed": true,
+      "flag_type": null,
+      "ml_recovery_probability": 0.9649,
+      "outcome": "executed",
+      "reasoning": "Compliance checks passed. Executing retry (attempt 1/3).",
+      "triggered_by": "rule"
+    },
+    "contact_window_upper_boundary": {
+      "action_type": "retry",
+      "allowed": false,
+      "outcome": "blocked_contact_hours",
+      "reasoning": "Outside permitted contact window (9:00-20:00).",
+      "triggered_by": "rule"
+    },
+    "cooldown_active": {
+      "action_type": "retry",
+      "allowed": false,
+      "outcome": "blocked_cooldown",
+      "reasoning": "Cooldown active. 18.0h remaining before next contact allowed.",
+      "triggered_by": "rule"
+    },
+    "cooldown_just_expired": {
+      "action_type": "retry",
+      "allowed": true,
+      "flag_type": null,
+      "ml_recovery_probability": 0.9618,
+      "outcome": "executed",
+      "reasoning": "Compliance checks passed. Executing retry (attempt 2/3).",
+      "triggered_by": "rule"
+    },
+    "dispute": {
+      "action_type": null,
+      "allowed": false,
+      "flag_type": "dispute_flag",
+      "outcome": "flagged_manual_review",
+      "reasoning": "Customer reply indicates a dispute. Routed to manual review.",
+      "triggered_by": "rule"
+    },
+    "escalate_ignores_contact_window": {
+      "action_type": "escalate",
+      "allowed": true,
+      "flag_type": null,
+      "ml_recovery_probability": 0.5423,
+      "outcome": "executed",
+      "reasoning": "No customer response after 7 days. Auto-escalating to human queue.",
+      "triggered_by": "rule"
+    },
+    "intent_mismatch": {
+      "action_type": null,
+      "allowed": false,
+      "flag_type": "mismatch",
+      "outcome": "flagged_manual_review",
+      "reasoning": "Extracted intent conflicts with stored root_cause (mentioned_reason=expired_card). Routed to manual review.",
+      "triggered_by": "rule"
+    },
+    "invoice_deeply_overdue": {
+      "action_type": "escalate",
+      "allowed": true,
+      "flag_type": null,
+      "ml_recovery_probability": 0.5432,
+      "outcome": "executed",
+      "reasoning": "No customer response after 7 days. Auto-escalating to human queue.",
+      "triggered_by": "rule"
+    },
+    "invoice_overdue_at_autostop": {
+      "action_type": "escalate",
+      "allowed": true,
+      "flag_type": null,
+      "ml_recovery_probability": 0.8957,
+      "outcome": "executed",
+      "reasoning": "No customer response after 7 days. Auto-escalating to human queue.",
+      "triggered_by": "rule"
+    },
+    "invoice_overdue_below_autostop": {
+      "action_type": "reminder",
+      "allowed": true,
+      "flag_type": null,
+      "ml_recovery_probability": 0.9176,
+      "outcome": "executed",
+      "reasoning": "Compliance checks passed. Executing reminder (attempt 1/3).",
+      "triggered_by": "rule"
+    },
+    "low_confidence": {
+      "action_type": null,
+      "allowed": false,
+      "flag_type": null,
+      "outcome": "flagged_manual_review",
+      "reasoning": "LLM intent confidence 0.42 below threshold 0.6. Routed to manual review.",
+      "triggered_by": "rule"
+    },
+    "max_retries": {
+      "action_type": "stop",
+      "allowed": true,
+      "outcome": "executed",
+      "reasoning": "Max 3 contact attempts reached. Stopping further automated contact.",
+      "triggered_by": "rule"
+    },
+    "method_update_is_not_a_conflict": {
+      "action_type": "retry",
+      "allowed": true,
+      "flag_type": null,
+      "ml_recovery_probability": 0.8863,
+      "outcome": "executed",
+      "reasoning": "Compliance checks passed. Executing retry (attempt 1/3).",
+      "triggered_by": "rule"
+    },
+    "outside_contact_window": {
+      "action_type": "retry",
+      "allowed": false,
+      "outcome": "blocked_contact_hours",
+      "reasoning": "Outside permitted contact window (9:00-20:00).",
+      "triggered_by": "rule"
+    },
+    "reminders_count_toward_ceiling": {
+      "action_type": "stop",
+      "allowed": true,
+      "outcome": "executed",
+      "reasoning": "Max 3 contact attempts reached. Stopping further automated contact.",
+      "triggered_by": "rule"
+    },
+    "seven_days_but_customer_replied": {
+      "action_type": "retry",
+      "allowed": true,
+      "flag_type": null,
+      "ml_recovery_probability": 0.961,
+      "outcome": "executed",
+      "reasoning": "Compliance checks passed. Executing retry (attempt 1/3).",
+      "triggered_by": "rule"
+    },
+    "seven_days_silence": {
+      "action_type": "escalate",
+      "allowed": true,
+      "flag_type": null,
+      "ml_recovery_probability": 0.9469,
+      "outcome": "executed",
+      "reasoning": "No customer response after 7 days. Auto-escalating to human queue.",
+      "triggered_by": "rule"
+    }
+  },
+  "frozen_now_local": "2026-06-15T12:00:00",
+  "ml_regime": "model_present",
+  "scenario_count": 25,
+  "schema_version": 1
+}
