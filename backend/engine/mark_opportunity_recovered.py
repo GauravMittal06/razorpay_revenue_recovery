@@ -33,6 +33,10 @@ def mark_opportunity_recovered(opportunity_id: str, conn, partial_recovery_amoun
 
     current_status = row["status"]
 
+    # These two early returns are a fast path and a clear error message, not
+    # the safety mechanism. The real guard is the WHERE clause below: between
+    # this read and that write, another caller can commit a recovery, and a
+    # check up here cannot see it.
     if current_status == "stopped":
         return {
             "opportunity_id": opportunity_id,
@@ -51,17 +55,44 @@ def mark_opportunity_recovered(opportunity_id: str, conn, partial_recovery_amoun
     amount = partial_recovery_amount if partial_recovery_amount is not None else row["amount_at_risk"]
     time_to_recovery = now - row["created_at"]
 
-    conn.execute(
+    # Compare-and-swap. The UPDATE repeats the precondition the SELECT above
+    # relied on, so the read-decide-write becomes one atomic statement: SQLite
+    # applies a single UPDATE indivisibly, and exactly one concurrent caller
+    # can match a row whose status is still neither 'recovered' nor 'stopped'.
+    #
+    # Without the WHERE guard every concurrent caller passed the check above,
+    # every one issued this UPDATE, and every one was told "ok" -- while the
+    # row itself ended up looking perfectly clean with a single 'recovered'
+    # status. That is what makes this class of bug survive inspection, and how
+    # one recovery gets counted N times by any ledger that trusts the return
+    # value.
+    cursor = conn.execute(
         """
         UPDATE opportunities
         SET status = 'recovered', recovered_bool = 1, recovered_at = ?,
             resolved_at = ?, partial_recovery_amount = ?, resolution_type = 'recovered',
             time_to_recovery = ?
         WHERE opportunity_id = ?
+          AND status NOT IN ('recovered', 'stopped')
         """,
         (now, now, amount, time_to_recovery, opportunity_id),
     )
     conn.commit()
+
+    if cursor.rowcount == 0:
+        # Lost the race: someone else moved this opportunity to a terminal
+        # state between the read and the write. Re-read to report which.
+        after = conn.execute(
+            "SELECT status FROM opportunities WHERE opportunity_id = ?",
+            (opportunity_id,),
+        ).fetchone()
+        final_status = after["status"] if after else None
+        return {
+            "opportunity_id": opportunity_id,
+            "status": "rejected_stopped" if final_status == "stopped"
+                      else "already_recovered",
+            "opportunity_status": final_status,
+        }
 
     return {
         "opportunity_id": opportunity_id,
