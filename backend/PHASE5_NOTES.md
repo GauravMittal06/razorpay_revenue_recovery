@@ -224,6 +224,54 @@ plausible, since nothing now rejects the string at write time.
 | # | Item | Status | Ruled |
 |---|---|---|---|
 | C1 | `test_higher_true_incremental_value_ranks_above_lower` (Phase 4 G7) still encodes the retracted methodology -- probability ground truth compared against rupee-space model output on constructed contexts -- and therefore still fails. | **Open.** Deferred out of Phase 5 scope. | 2026-09-02 |
+| C2 | The joint outcome model has learned the **wrong sign for `payment_history_score`**, the largest-magnitude of the four features probed. | **Open, PROPOSED** -- awaiting a ruling on whether to accept onto this list. | 2026-09-03 |
+
+### C2 detail — inverted `payment_history_score` response
+
+Found while building `test_everything.py`, not by a failing test — no existing
+test checks the model's directional response to a single feature.
+
+**Measurement.** Each feature varied alone, everything else held fixed, across
+every actionable seeded opportunity:
+
+| feature | generator's sign | model's response | mean Δp |
+|---|---|---|---|
+| `payment_history_score` 0.05→0.95 | **positive** | **LOWERS in 91/92 (98.9%)** | **−0.063** |
+| `past_recovery_rate` 0.05→0.95 | positive | raises in 81/92 (88.0%) | +0.026 |
+| `retry_count` 0→3 | negative (fatigue) | lowers in 91/92 (98.9%) | −0.025 |
+| `prior_contacts_in_window` 0→5 | negative (fatigue) | lowers in 89/92 (96.7%) | −0.011 |
+
+Three of four are correct, so this is not a broken probe.
+
+**The generator is unambiguously monotonic positive**
+(`candidate_outcome_dataset.py:76-77, 86-89`):
+
+    liquidity_state      = clip01(rng.normal(0.3 + 0.5 * payment_history_score, 0.22))
+    recovery_willingness = clip01(0.5*liquidity_state + 0.4*customer_responsiveness + noise)
+
+**Reproduced on held-out data.** On 126 retry rows from
+`phase3_baseline_seed42_calibration_holdout.csv`, the inversion holds in
+**95.2%** (120/126), mean Δp −0.037. So it is not an artifact of the 92
+seeded opportunities.
+
+**What is NOT established.** Both measurements ran with
+`network_health_known = 0.0` (no `bank_health_observations` rows), which is
+the live-serving regime, not the training regime. Whether the inversion
+persists with real network-health data present is untested. A marginal-vs-
+conditional sign difference can be legitimate in principle; a 98.9% consistent
+inversion of the largest-magnitude feature, against a generator that is
+explicitly monotonic in it, is not a subtle case.
+
+**Why it matters.** It feeds `p_recovery`, which feeds
+`expected_recovered_amount`, which is the EIV the optimizer ranks on. If the
+sign is wrong, the optimizer systematically prefers the wrong candidates for
+customers at the extremes of payment history. This touches ranking
+correctness, which the standing rules single out as requiring a diagnostic
+pass rather than a deferral.
+
+**Not diagnosed further here.** `ml/inference.py`, `outcome_features.py` and
+the model artifact are frozen Phase 3 inputs, and Phase 5 may not touch them.
+Reproduced by `test_everything.py`, which prints the measurement on every run.
 
 ### C1 detail
 

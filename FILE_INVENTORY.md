@@ -1,6 +1,6 @@
 # FILE_INVENTORY.md
 
-- `test_everything.py` - stdlib-only end-to-end verification script (rebuild DB, run pipeline, live API checks, idempotency tests).
+- `test_everything.py` - end-to-end verification of Phases 0-5, run by hand (`python test_everything.py`, or `--quick` to skip Phase 2 generation). Builds a throwaway DB and seed set in a temp dir, then checks schema/idempotent rebuild, both calibration profiles and generator determinism, the joint model's scoring and directional sanity, the optimizer's ranked list and measured latency, and the Phase 5 rule engine and executor (fallthrough, disable switch, method-change refusal, do_nothing writing no execution row, full pipeline through `trigger_event`). Prints observed values rather than pass/fail, counts disclosed gaps separately from unexpected ones, and touches no git state and nothing outside its temp dir. NOT stdlib-only despite an earlier description here saying so: it exercises Phases 2-4, so it needs the pinned scientific stack and the gitignored model artifacts (missing artifacts are reported as skips, not passes).
 - `gate_check.sh` - earlier bash-based automated acceptance-gate check script.
 - `backend/__init__.py` - marks `backend` as a Python package for the `backend.`-prefixed import convention.
 - `backend/requirements.txt` - pinned dependency manifest, reconstructed from the actual import graph; now also pins `scipy==1.17.1` explicitly since `data_factory/validators.py` imports `scipy.stats` directly.
