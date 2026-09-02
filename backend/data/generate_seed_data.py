@@ -47,6 +47,34 @@ ROOT_CAUSES = [
     "authentication_failed", "expired_card", "network_error",
 ]
 METHODS = ["card", "netbanking", "upi", "wallet"]
+
+# Simulated-hour horizon the seeded network-health series spans.
+#
+# PROVISIONAL, and deliberately NOT the Data Factory's default. That default
+# is DEFAULT_HORIZON_HOURS = 24 * 120 = 2880 simulated hours; at 4h windows
+# across 72 channels that is 51,840 rows, and seed generation runs once per
+# test through the seed_data_dir fixture. Measured cost of the whole seed set:
+#
+#     horizon 2880h  ~1.4 s      51,840 rows
+#     horizon  720h   347 ms     12,960 rows
+#     horizon  168h    92 ms      3,024 rows
+#     no health        19 ms          0 rows
+#
+# 168h (one simulated week) is chosen for cost. It is defensible only because
+# the series is currently unread by the live path: mapping a live unix
+# timestamp onto this simulated-hour axis is an open decision (PHASE5_NOTES),
+# and until it is made, no live scoring selects a window. Revisit this
+# alongside that ruling -- if live lookups start landing on real windows, the
+# horizon has to cover the span they can reach.
+HEALTH_HORIZON_HOURS = 168
+
+# Channel assignment and the health series draw from their OWN generator,
+# never from the main `rng`. Adding draws to the main stream would shift every
+# subsequent draw and silently regenerate the entire seed set -- different
+# methods, amounts and statuses -- when the intent is only to add two columns.
+# A separate stream keeps the Phase 5 addition strictly additive: every
+# pre-existing field keeps the exact value it had before.
+CHANNEL_RNG_SEED = 20260903
 CHANNELS = ["email", "sms", "whatsapp"]
 
 FIRST_NAMES = [
@@ -64,6 +92,66 @@ MERCHANT_NAMES = [
 ]
 
 DAY_SECONDS = 86400
+
+
+# --------------------------------------------------------------------------
+# Network channel + health, reused from the Data Factory (Phase 5)
+# --------------------------------------------------------------------------
+# The seed set previously wrote no `bank`/`psp`, so every live scoring landed
+# in the network_health_known=0 regime and the four network-health features
+# were dead at serving time. This is our own synthetic pipeline end to end --
+# nothing here waits on an external gateway -- so the gap was ours to close.
+#
+# The vocabularies and the health-series generator are IMPORTED from
+# data_factory rather than reimplemented, so a seeded payment names the same
+# channels, drawn the same way, as the rows the model trained on. A second
+# implementation here would be a second definition of what a channel is.
+
+def _bank_channels_for_seed(rng):
+    from backend.data_factory.entities import generate_bank_channels
+    return generate_bank_channels(rng)
+
+
+def _pick_channel_for_method(rng, channels, method):
+    """
+    Mirrors candidate_outcome_dataset._pick_bank_channel: restrict to channels
+    carrying this payment method, fall back to the full set if none do. That
+    helper is a private function inside a frozen module, so the two-line rule
+    is restated here rather than imported through a private name -- the
+    vocabulary itself (which channels exist) still comes from entities.py.
+    """
+    matching = [c for c in channels if c.method == method]
+    pool = matching or channels
+    return pool[int(rng.integers(0, len(pool)))]
+
+
+def generate_bank_health_observations(rng, channels, horizon_hours):
+    """
+    One health series per channel, using the Data Factory's own generator and
+    the baseline calibration profile -- the same profile the shipped model was
+    trained under.
+
+    Windows are in SIMULATED hours starting at 0, exactly as in training.
+    Mapping a live unix timestamp onto that axis is a separate, unresolved
+    decision (see PHASE5_NOTES.md); this function only supplies the series.
+    """
+    from backend.data_factory import bank_health_timeseries as bht
+    from backend.data_factory import calibration_profiles as cp
+
+    profile = cp.get_profile("baseline")
+    rows = []
+    for ch in channels:
+        for obs in bht.generate_series_for_channel(
+                rng, ch.bank, ch.method, ch.psp, horizon_hours, profile):
+            rows.append({
+                "bank": obs.bank, "method": obs.method, "psp": obs.psp,
+                "window_start": float(obs.window_start),
+                "window_end": float(obs.window_end),
+                "success_rate": float(obs.success_rate),
+                "timeout_rate": float(obs.timeout_rate),
+                "health_score": float(obs.health_score),
+            })
+    return rows
 
 
 def _rand_name(rng):
@@ -115,11 +203,19 @@ def _weighted_status(rng):
     return "open"
 
 
-def generate_opportunities_and_payments(merchants, customers, rng, now=None):
+def generate_opportunities_and_payments(merchants, customers, rng, now=None,
+                                         bank_channels=None):
     """
     `now` anchors relative ages to a point in time -- see module docstring
     for what is and isn't controlled by RNG_SEED.
+
+    `bank_channels` (Phase 5) supplies the (bank, method, psp) triples each
+    payment attempt is assigned to. Optional so an older caller still works;
+    when omitted, payments carry bank=None/psp=None as they did before.
+    Channel selection uses its own generator so that adding it does not
+    perturb any pre-existing field -- see CHANNEL_RNG_SEED.
     """
+    channel_rng = np.random.default_rng(CHANNEL_RNG_SEED)
     if now is None:
         now = int(time.time())
 
@@ -210,6 +306,15 @@ def generate_opportunities_and_payments(merchants, customers, rng, now=None):
                 error_source = str(rng.choice(["customer", "bank", "gateway"]))
                 error_step = str(rng.choice(["authorization", "authentication", "processing"]))
 
+            # Drawn from the main stream at exactly the position the original
+            # inline `rng.choice(METHODS)` occupied, so this field keeps its
+            # previous value. The channel that carries it is then chosen from
+            # the separate channel stream, adding no draw to the main one.
+            payment_method = str(rng.choice(METHODS))
+            channel = (_pick_channel_for_method(channel_rng, bank_channels,
+                                                payment_method)
+                       if bank_channels else None)
+
             payments.append({
                 "id": f"pay_seed_{i:04d}_{attempt_idx}",
                 "opportunity_id": opportunity_id,
@@ -219,7 +324,7 @@ def generate_opportunities_and_payments(merchants, customers, rng, now=None):
                 "status": "captured" if (status == "recovered" and attempt_idx == n_attempts - 1) else "failed",
                 "order_id": f"order_seed_{i:04d}",
                 "invoice_id": f"inv_seed_{i:04d}" if event_type == "invoice_overdue" else None,
-                "method": str(rng.choice(METHODS)),
+                "method": payment_method,
                 "email": f"customer{i}@example.com",
                 "contact": f"+9198{rng.integers(10000000, 99999999)}",
                 "error_code": error_code,
@@ -228,6 +333,8 @@ def generate_opportunities_and_payments(merchants, customers, rng, now=None):
                 "error_step": error_step,
                 "error_reason": root_cause,
                 "created_at": attempt_created_at,
+                "bank": channel.bank if channel else None,
+                "psp": channel.psp if channel else None,
             })
 
     return opportunities, payments
@@ -240,7 +347,15 @@ def main():
 
     merchants = generate_merchants(rng)
     customers = generate_customers(merchants, rng)
-    opportunities, payments = generate_opportunities_and_payments(merchants, customers, rng, now=now)
+    # Both use the dedicated channel stream, so the main `rng` reaches
+    # generate_opportunities_and_payments() in exactly the state it did
+    # before Phase 5 and every pre-existing field is unchanged.
+    channel_rng = np.random.default_rng(CHANNEL_RNG_SEED)
+    bank_channels = _bank_channels_for_seed(channel_rng)
+    opportunities, payments = generate_opportunities_and_payments(
+        merchants, customers, rng, now=now, bank_channels=bank_channels)
+    health_observations = generate_bank_health_observations(
+        channel_rng, bank_channels, HEALTH_HORIZON_HOURS)
 
     multi_attempt_opps = sum(
         1 for opp in opportunities
@@ -253,6 +368,7 @@ def main():
         ("customers.json", customers),
         ("opportunities.json", opportunities),
         ("payments.json", payments),
+        ("bank_health_observations.json", health_observations),
     ]:
         with open(DATA_DIR / name, "w") as f:
             json.dump(obj, f, indent=2)
@@ -260,6 +376,8 @@ def main():
     print(f"generator={GENERATOR_VERSION} seed={RNG_SEED} now={now}")
     print(f"{len(merchants)} merchants, {len(customers)} customers, "
           f"{len(opportunities)} opportunities, {len(payments)} payments")
+    print(f"{len(bank_channels)} bank channels, {len(health_observations)} "
+          f"health observations over {HEALTH_HORIZON_HOURS} simulated hours")
     print(f"{multi_attempt_opps} opportunities have >1 payment attempt "
           f"(multi-retry aggregation fixture)")
     print("Note: event_type/root_cause/amount/customer/status/method/channel/retry-count")

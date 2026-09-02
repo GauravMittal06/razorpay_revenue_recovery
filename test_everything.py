@@ -213,12 +213,14 @@ def build_temp_world(tmp: Path):
     with redirect_stdout(io.StringIO()):
         gsd.main()
 
-    from backend.db.db import (create_schema, get_connection, load_customers,
+    from backend.db.db import (create_schema, get_connection,
+                               load_bank_health_observations, load_customers,
                                load_merchants, load_opportunities, load_payments)
     conn = get_connection()
     create_schema(conn)
     load_merchants(conn); load_customers(conn)
     load_opportunities(conn); load_payments(conn)
+    load_bank_health_observations(conn)
     return conn, db_module
 
 
@@ -290,6 +292,18 @@ def phase01(conn, db_module, tmp):
     ).fetchone()[0]
     R.check("actionable opportunities exist", open_n > 0,
             f"{open_n} open/recovering", "> 0")
+
+    R.sub("network channel data (added Phase 5)")
+    n_pay = conn.execute("SELECT COUNT(*) FROM payments").fetchone()[0]
+    n_chan = conn.execute(
+        "SELECT COUNT(*) FROM payments WHERE bank IS NOT NULL AND psp IS NOT NULL"
+    ).fetchone()[0]
+    R.check("every payment names a (bank, method, psp) channel", n_chan == n_pay,
+            f"{n_chan}/{n_pay} payments carry bank and psp", "all of them")
+    n_health = conn.execute(
+        "SELECT COUNT(*) FROM bank_health_observations").fetchone()[0]
+    R.check("the network-health series is seeded", n_health > 0,
+            f"{n_health} observation rows", "> 0")
 
 
 # --------------------------------------------------------------------------
@@ -426,23 +440,51 @@ def phase3(conn):
     print("       past_recovery_rate -> customer_responsiveness -> ... (+)")
     print("       retry_count / prior_contacts: fatigue (-)")
 
+    from backend.ml import outcome_features as feats
+    lookup = inference._get_health_lookup(conn)
+    regimes = set()
+
+    def _enriched(o):
+        """
+        Context carrying the real (bank, method, psp) from the opportunity's
+        latest payment, so the probe runs at network_health_known=1.0.
+
+        optimize.load_context() still hardcodes bank=None/psp=None -- that is
+        a frozen Phase 4 module and closing it needs a ruling -- so the channel
+        is attached here rather than read from the context it returns.
+        """
+        c, _ = optimize.load_context(conn, o)
+        if c is None:
+            return None, None
+        p = conn.execute(
+            "SELECT method, bank, psp FROM payments WHERE opportunity_id=?"
+            " ORDER BY created_at DESC LIMIT 1", (o,)).fetchone()
+        if p is None or p["bank"] is None:
+            return None, None
+        c = dict(c)
+        c["bank"], c["psp"] = p["bank"], p["psp"]
+        c["decision_time_hours"] = float((hash(o) % 150) + 10)
+        return c, {"action_type": "retry", "timing": "immediate",
+                   "timing_hours": 0.0, "method": p["method"],
+                   "channel": "n/a", "method_changed": False}
+
     def direction(field, lo, hi):
+        import pandas as pd
+        model = inference._load_model()
         up = down = 0
         deltas = []
         for o in ids:
-            c, _ = optimize.load_context(conn, o)
+            c, cd = _enriched(o)
             if c is None:
                 continue
-            cd = {"action_type": "retry", "timing": "immediate", "timing_hours": 0.0,
-                  "method": c.get("current_method"), "channel": "n/a",
-                  "method_changed": False}
-            a = dict(c); a[field] = lo
-            b = dict(c); b[field] = hi
-            ra = inference.score_candidate(a, cd, conn=conn)
-            rb = inference.score_candidate(b, cd, conn=conn)
-            if ra["p_recovery"] is None or rb["p_recovery"] is None:
-                continue
-            d = rb["p_recovery"] - ra["p_recovery"]
+            ps = []
+            for value in (lo, hi):
+                ctx = dict(c); ctx[field] = value
+                row = feats.build_feature_row(ctx, cd, lookup)
+                regimes.add(row["network_health_known"])
+                X = pd.DataFrame([row])[feats.ALL_FEATURES]
+                ps.append(float(model["p_pipeline"].predict_proba(X)[:, 1][0]))
+            d = ps[1] - ps[0]
             deltas.append(d)
             up += d > 0
             down += d <= 0
@@ -469,13 +511,31 @@ def phase3(conn):
                 f"LOWERS in {down}/{n} ({down/max(n,1):.1%}), mean delta {mean:+.5f}",
                 "should raise it -- the generator is monotonic positive",
                 "OPEN FINDING (closeout C2, proposed). The model has learned the\n"
-                "wrong sign for the largest-magnitude of the four features tested.\n"
+                "wrong sign for the only one of these four features that is wrong.\n"
                 "Generator ground truth, candidate_outcome_dataset.py:76-77:\n"
                 "  liquidity_state = 0.3 + 0.5 * payment_history_score\n"
                 "  recovery_willingness = 0.5*liquidity_state + 0.4*responsiveness\n"
-                "Reproduced on held-out Phase 3 eval contexts as well (95.2%).\n"
-                "NOT yet established: whether it persists with real network-health\n"
-                "data present -- both measurements ran at network_health_known=0.")
+                "Network health was NOT the cause: populating bank/psp reduced the\n"
+                "inversion from 98.9% to ~75% and halved the mean effect, but did\n"
+                "not remove it. Also reproduced on held-out Phase 3 eval contexts.")
+
+    R.check("the directional probe ran with network health present",
+            regimes == {1.0},
+            f"network_health_known values seen: {sorted(regimes)}",
+            "{1.0} -- the probe attaches the real channel from the payment row")
+
+    R.sub("the live optimizer still cannot see network health")
+    ctx_plain, _ = optimize.load_context(conn, ids[0])
+    R.disclosed("optimize.load_context supplies the network channel",
+                f"bank={ctx_plain.get('bank')!r} psp={ctx_plain.get('psp')!r} "
+                f"decision_time_hours={ctx_plain.get('decision_time_hours')!r}",
+                "the real channel from the latest payment",
+                "The seed data now carries bank/psp and a health series, but\n"
+                "optimize.py hardcodes bank=None/psp=None/decision_time_hours=0.0\n"
+                "and is a FROZEN Phase 4 module. Until that is unfrozen, every\n"
+                "live scoring still lands at network_health_known=0. Closing it\n"
+                "also needs a defined unix -> simulated-hour mapping, which does\n"
+                "not exist yet. Both flagged for a ruling; see PHASE5_NOTES.md.")
     return None
 
 

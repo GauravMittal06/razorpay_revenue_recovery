@@ -127,6 +127,15 @@ CREATE TABLE IF NOT EXISTS payments (
     error_step TEXT,
     error_reason TEXT,
     created_at INTEGER,
+    -- The (bank, method, psp) triple identifying which network channel this
+    -- attempt went through. Added in Phase 5. Without these the four
+    -- network-health features are unavailable at serving time and every live
+    -- scoring lands in the network_health_known=0 regime -- a regime the
+    -- model was trained to tolerate but which discards a real signal. The
+    -- vocabularies are the Data Factory's own (entities.BANKS / entities.PSPS)
+    -- so a seeded payment names the same channels the training rows do.
+    bank TEXT,
+    psp TEXT,
     FOREIGN KEY (opportunity_id) REFERENCES opportunities(opportunity_id)
 );
 
@@ -354,16 +363,47 @@ def load_payments(conn):
         INSERT OR REPLACE INTO payments
         (id, opportunity_id, entity, amount, currency, status, order_id, invoice_id,
          method, email, contact, error_code, error_description, error_source,
-         error_step, error_reason, created_at)
+         error_step, error_reason, created_at, bank, psp)
         VALUES
         (:id, :opportunity_id, :entity, :amount, :currency, :status, :order_id, :invoice_id,
          :method, :email, :contact, :error_code, :error_description, :error_source,
-         :error_step, :error_reason, :created_at)
+         :error_step, :error_reason, :created_at, :bank, :psp)
         """,
         payments,
     )
     conn.commit()
     return len(payments)
+
+
+def load_bank_health_observations(conn):
+    """
+    Load the seeded network-health series. Written by generate_seed_data.py
+    using the Data Factory's own generator, so the live observations are the
+    same shape and vocabulary as the ones the model was trained against.
+
+    Absent file is not an error: a seed set generated before Phase 5 has no
+    such file, and the network-health features then degrade to the
+    network_health_known=0 regime rather than failing the load.
+    """
+    path = DATA_DIR / "bank_health_observations.json"
+    if not path.exists():
+        return 0
+    with open(path) as f:
+        observations = json.load(f)
+
+    conn.executemany(
+        """
+        INSERT INTO bank_health_observations
+        (bank, method, psp, window_start, window_end, success_rate,
+         timeout_rate, health_score)
+        VALUES
+        (:bank, :method, :psp, :window_start, :window_end, :success_rate,
+         :timeout_rate, :health_score)
+        """,
+        observations,
+    )
+    conn.commit()
+    return len(observations)
 
 
 def main():

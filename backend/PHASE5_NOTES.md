@@ -232,16 +232,25 @@ Found while building `test_everything.py`, not by a failing test — no existing
 test checks the model's directional response to a single feature.
 
 **Measurement.** Each feature varied alone, everything else held fixed, across
-every actionable seeded opportunity:
+every actionable seeded opportunity (n=92 in both regimes -- the same
+opportunity set, so the two columns are like-for-like):
 
-| feature | generator's sign | model's response | mean Δp |
+| feature | generator's sign | at `network_health_known=0` | with real network health (`=1.0`) |
 |---|---|---|---|
-| `payment_history_score` 0.05→0.95 | **positive** | **LOWERS in 91/92 (98.9%)** | **−0.063** |
-| `past_recovery_rate` 0.05→0.95 | positive | raises in 81/92 (88.0%) | +0.026 |
-| `retry_count` 0→3 | negative (fatigue) | lowers in 91/92 (98.9%) | −0.025 |
-| `prior_contacts_in_window` 0→5 | negative (fatigue) | lowers in 89/92 (96.7%) | −0.011 |
+| `payment_history_score` 0.05→0.95 | **positive** | **LOWERS 91/92 (98.9%), −0.063** | **LOWERS 69/92 (75.0%), −0.030** |
+| `past_recovery_rate` 0.05→0.95 | positive | raises 81/92 (88.0%), +0.026 | raises 79/92 (85.9%), +0.032 |
+| `retry_count` 0→3 | negative (fatigue) | lowers 91/92 (98.9%), −0.025 | lowers 83/92 (90.2%), −0.018 |
+| `prior_contacts_in_window` 0→5 | negative (fatigue) | lowers 89/92 (96.7%), −0.011 | lowers 89/92 (96.7%), −0.010 |
 
-Three of four are correct, so this is not a broken probe.
+Three of four are correct in both regimes, so this is not a broken probe.
+
+**Network health was not the cause.** The original measurement ran at
+`network_health_known = 0.0` and the obvious hypothesis was that the missing
+network-health features were distorting the response. Seeding real
+`bank`/`psp` and a health series (Phase 5) and re-running at
+`network_health_known = 1.0` **reduced** the inversion from 98.9% to 75.0% and
+roughly halved the mean effect, but did not remove it. It remains the only one
+of the four with the wrong sign.
 
 **The generator is unambiguously monotonic positive**
 (`candidate_outcome_dataset.py:76-77, 86-89`):
@@ -254,13 +263,13 @@ Three of four are correct, so this is not a broken probe.
 **95.2%** (120/126), mean Δp −0.037. So it is not an artifact of the 92
 seeded opportunities.
 
-**What is NOT established.** Both measurements ran with
-`network_health_known = 0.0` (no `bank_health_observations` rows), which is
-the live-serving regime, not the training regime. Whether the inversion
-persists with real network-health data present is untested. A marginal-vs-
-conditional sign difference can be legitimate in principle; a 98.9% consistent
-inversion of the largest-magnitude feature, against a generator that is
-explicitly monotonic in it, is not a subtle case.
+**What is NOT established.** Whether the residual 75% inversion is a training
+artefact (a correlation in the training corpus the model fitted in place of
+the causal direction) or something else. A marginal-vs-conditional sign
+difference can be legitimate in principle; a three-in-four inversion of a
+feature the generator is explicitly monotonic in is not obviously that.
+Diagnosing it means retraining or inspecting the fitted model, both of which
+are Phase 3 territory.
 
 **Why it matters.** It feeds `p_recovery`, which feeds
 `expected_recovered_amount`, which is the EIV the optimizer ranks on. If the
@@ -333,6 +342,71 @@ statically.
 blocked baseline unchanged, which silently disabled the fallthrough in the one
 case it exists for. Two tests caught it before review. The corrected rule is
 R-W3-1 above.
+
+---
+
+## 1d. Network health at serving time — closed on the data side, blocked on the wiring
+
+The Phase 4 hand-off recorded network health as "unavailable at serving time"
+and filed it as a Phase 6/7 closure item, on the reading that it depended on
+data the system did not have. That reading was wrong: this project is
+synthetic end to end by design, with no external integration now or ever, so
+the gap was always ours to close.
+
+**Closed in Phase 5 (data side).**
+
+| Change | File |
+|---|---|
+| `bank` and `psp` columns added to `payments` | `db/db.py` |
+| every seeded payment assigned a `(bank, method, psp)` triple | `data/generate_seed_data.py` |
+| a network-health series seeded for every channel | `data/generate_seed_data.py` |
+| `load_bank_health_observations()` | `db/db.py` |
+
+Vocabularies and the health generator are **imported** from `data_factory`
+(`entities.BANKS/PSPS`, `bank_health_timeseries.generate_series_for_channel`,
+the `baseline` calibration profile), not reimplemented, so a seeded payment
+names the same channels, drawn the same way, as the training rows. The one
+restatement is the two-line "pick a channel carrying this method" rule, whose
+original lives in a private function inside a frozen module.
+
+**Strictly additive, verified.** Channel selection and health generation draw
+from a dedicated generator (`CHANNEL_RNG_SEED`), never the main `rng`. Against
+the pre-change generator: `merchants.json`, `customers.json` and
+`opportunities.json` byte-identical; `payments.json` identical except the two
+added fields; 177/177 payments populated.
+
+A first attempt drew from the main stream and silently regenerated the whole
+seed set, which surfaced as a new failure in
+`test_do_nothing_legitimately_wins_at_least_one_real_ranking` -- do_nothing
+stopped winning any ranking because the underlying cases had changed. Fixed
+before merge; recorded because "adding a field" quietly changing every other
+field is exactly the class of defect a seed generator can hide.
+
+**Still blocked (wiring side).** `network_health_known` is still `0.0` on every
+live scoring, because `optimize.py` hardcodes `bank=None`, `psp=None`,
+`decision_time_hours=0.0` (module docstring, lines 62-66) and is a **frozen
+Phase 4 input**. Two things are needed and neither is Phase 5's to decide:
+
+1. **Unfreeze `optimize.py`** enough to read the channel off the latest
+   payment. Three lines.
+2. **Define a unix → simulated-hour mapping.** `bank_health_observations`
+   windows are simulated hours from 0; a live opportunity has a unix
+   timestamp. There is no defined correspondence, and whichever is chosen
+   determines which health window a live scoring reads -- a model-input
+   decision, not a mechanical one.
+
+Proven sufficient in the meantime: attaching the real channel to a context by
+hand yields `network_health_known = 1.0` with live values
+(`health_score=0.687`, `success_rate=0.839`, `timeout_rate=0.110`). The data
+is correct and complete; only the frozen wiring stands between it and the
+model.
+
+`HEALTH_HORIZON_HOURS = 168` is **provisional and deliberately not** the Data
+Factory's `DEFAULT_HORIZON_HOURS` (2880). Measured seed-generation cost:
+2880h ≈ 1.4s, 720h 347ms, 168h 92ms, none 19ms -- and the seed set is
+regenerated once per test through the `seed_data_dir` fixture. 168h is
+defensible only while the series is unread by the live path; it must be
+revisited alongside the mapping ruling.
 
 ---
 
