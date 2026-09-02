@@ -30,10 +30,21 @@ DATA_DIR = BASE_DIR / "data"
 # Section 3). Enforced by application code (decide_action.py), listed here
 # as the authoritative reference for what a migration/structural test
 # should expect -- SQLite has no native enum type.
+#
+# Phase 5 removed `blocked_max_retries` from this tuple. It was declared here
+# and named in decide_action()'s docstring, but had no producer in any commit
+# in the project's history: the max-retries branch returns action_type="stop",
+# outcome="executed" and closes the opportunity. That is an affirmative
+# terminal resolution, not a block -- every other blocked_* value means "not
+# now, the opportunity stays open, try later" -- so filing a permanent
+# termination under the same prefix made the vocabulary less auditable, not
+# more. Removing it changed no behaviour; it aligned this declaration with the
+# decision already recorded at STATE_AND_DECISIONS.md:109-111. Full analysis,
+# including why adding the branch instead would leave opportunities unclosed
+# and reprocessed on every cycle, is in backend/PHASE5_NOTES.md section 1.
 DECISION_OUTCOMES = (
     "executed",
     "blocked_cooldown",
-    "blocked_max_retries",
     "blocked_contact_hours",
     "blocked_already_escalated",
     "blocked_already_stopped",

@@ -94,12 +94,13 @@ def test_the_corpus_still_covers_every_outcome_the_engine_can_emit(empty_db):
     Guards the corpus against becoming a weaker check over time: every outcome
     value decide_action() is actually capable of emitting must appear in it.
 
-    Deliberately compares against the *emitted* set rather than the declared
-    DECISION_OUTCOMES vocabulary, because `blocked_max_retries` is declared in
-    db.py and named in decide_action()'s docstring but has no producer -- the
-    max-retries branch emits stop/executed instead. That gap is a pre-existing
-    finding recorded for sign-off, not something this test should mask by
-    demanding coverage of an unreachable value.
+    Compares against the *emitted* set rather than the declared
+    DECISION_OUTCOMES vocabulary. The two now agree -- Phase 5 removed
+    `blocked_max_retries`, which was declared but had no producer in any
+    commit in the project's history (the max-retries branch emits
+    stop/executed). Asserting on the emitted set is still the stronger check:
+    it fails if a branch stops firing, whereas a subset check against the
+    declared tuple would not.
     """
     emitted = {d["outcome"] for d in ps.capture_all(empty_db).values()}
     assert emitted == {
@@ -115,10 +116,13 @@ def test_the_corpus_still_covers_every_outcome_the_engine_can_emit(empty_db):
 @pytest.mark.gate("permanent.single_authority")
 def test_blocked_max_retries_remains_unreachable(empty_db):
     """
-    Pins the pre-existing gap above so it cannot change silently. If a future
-    change starts emitting `blocked_max_retries`, that is a real behavioural
-    change to the closed compliance vocabulary and must be a deliberate,
-    reviewed decision -- not a side effect of Phase 5's fallthrough loop.
+    Retained after the value's removal from DECISION_OUTCOMES, because the
+    removal is exactly what makes accidental reintroduction plausible: nothing
+    would now reject the string at write time. If a future change starts
+    emitting it, that is a real change to the closed compliance vocabulary and
+    must be a deliberate, reviewed decision -- not a side effect of Phase 5's
+    fallthrough loop, whose natural failure mode (no compliant candidate left)
+    routes to flagged_manual_review instead. See PHASE5_NOTES.md section 1.
     """
     emitted = {d["outcome"] for d in ps.capture_all(empty_db).values()}
     assert "blocked_max_retries" not in emitted, (

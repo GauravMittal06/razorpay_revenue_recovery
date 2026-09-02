@@ -170,9 +170,9 @@ def decide_action(opportunity: dict, classification: dict, conn,
       "action_type": "retry"|"reminder"|"escalate"|"stop"|None,
       "allowed": bool,
       "reasoning": str,
-      "outcome": "executed"|"blocked_cooldown"|"blocked_max_retries"|
-                 "blocked_contact_hours"|"blocked_already_escalated"|
-                 "blocked_already_stopped"|"flagged_manual_review",
+      "outcome": "executed"|"blocked_cooldown"|"blocked_contact_hours"|
+                 "blocked_already_escalated"|"blocked_already_stopped"|
+                 "flagged_manual_review",
       "triggered_by": "rule",
       "flag_type": "mismatch"|"root_cause_update_candidate"|"dispute_flag"|None
     }
