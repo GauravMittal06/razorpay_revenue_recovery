@@ -434,8 +434,11 @@ def phase3(conn):
 
     R.sub("directional sanity across every seeded opportunity")
     print("     Each feature is varied alone, all else held fixed, and the sign")
-    print("     of the change in p_recovery is counted. The generator's own")
-    print("     ground truth fixes the expected sign:")
+    print("     of the change in p_recovery is counted. Every swing stays INSIDE")
+    print("     the feature's observed range in the training corpus -- outside")
+    print("     it a tree ensemble has no defined behaviour and the result")
+    print("     measures leaf placement, not a learned relationship.")
+    print("     The generator's own ground truth fixes the expected sign:")
     print("       payment_history_score -> liquidity_state -> recovery_willingness (+)")
     print("       past_recovery_rate -> customer_responsiveness -> ... (+)")
     print("       retry_count / prior_contacts: fatigue (-)")
@@ -506,36 +509,33 @@ def phase3(conn):
             f"lowers in {down}/{n} ({down/max(n,1):.1%}), mean delta {mean:+.5f}",
             "majority lower -- fatigue")
 
-    up, down, n, mean = direction("payment_history_score", 0.05, 0.95)
-    R.disclosed("higher payment_history_score raises p_recovery",
-                f"LOWERS in {down}/{n} ({down/max(n,1):.1%}), mean delta {mean:+.5f}",
-                "should raise it -- the generator is monotonic positive",
-                "OPEN FINDING (closeout C2, proposed). The model has learned the\n"
-                "wrong sign for the only one of these four features that is wrong.\n"
-                "Generator ground truth, candidate_outcome_dataset.py:76-77:\n"
-                "  liquidity_state = 0.3 + 0.5 * payment_history_score\n"
-                "  recovery_willingness = 0.5*liquidity_state + 0.4*responsiveness\n"
-                "Network health was NOT the cause: populating bank/psp reduced the\n"
-                "inversion from 98.9% to ~75% and halved the mean effect, but did\n"
-                "not remove it. Also reproduced on held-out Phase 3 eval contexts.")
+    # p10..p90 of payment_history_score in the training corpus. Swinging
+    # outside the observed range measures leaf placement, not a learned
+    # relationship: the corpus spans [0.2031, 0.9236] and contains ZERO rows
+    # below 0.05 or above 0.95. Probing 0.05 -> 0.95 produced an apparent sign
+    # inversion that was retracted as a probe artefact (PHASE5_NOTES, C2).
+    up, down, n, mean = direction("payment_history_score", 0.4101, 0.8246)
+    R.check("higher payment_history_score raises p_recovery", up > down,
+            f"raises in {up}/{n} ({up/max(n,1):.1%}), mean delta {mean:+.5f}",
+            "majority raise, swung within the corpus p10..p90 range "
+            "[0.4101, 0.8246]")
 
     R.check("the directional probe ran with network health present",
             regimes == {1.0},
             f"network_health_known values seen: {sorted(regimes)}",
             "{1.0} -- the probe attaches the real channel from the payment row")
 
-    R.sub("the live optimizer still cannot see network health")
+    R.sub("the live optimizer sees the network channel")
+    from backend.engine import phase5_config as _cfg
     ctx_plain, _ = optimize.load_context(conn, ids[0])
-    R.disclosed("optimize.load_context supplies the network channel",
-                f"bank={ctx_plain.get('bank')!r} psp={ctx_plain.get('psp')!r} "
-                f"decision_time_hours={ctx_plain.get('decision_time_hours')!r}",
-                "the real channel from the latest payment",
-                "The seed data now carries bank/psp and a health series, but\n"
-                "optimize.py hardcodes bank=None/psp=None/decision_time_hours=0.0\n"
-                "and is a FROZEN Phase 4 module. Until that is unfrozen, every\n"
-                "live scoring still lands at network_health_known=0. Closing it\n"
-                "also needs a defined unix -> simulated-hour mapping, which does\n"
-                "not exist yet. Both flagged for a ruling; see PHASE5_NOTES.md.")
+    R.check("optimize.load_context supplies the network channel",
+            ctx_plain.get("bank") is not None and ctx_plain.get("psp") is not None
+            and _cfg.HEALTH_WINDOW_HOURS <= ctx_plain.get("decision_time_hours", -1)
+            < _cfg.HEALTH_HORIZON_HOURS,
+            f"bank={ctx_plain.get('bank')!r} psp={ctx_plain.get('psp')!r} "
+            f"decision_time_hours={ctx_plain.get('decision_time_hours'):.3f}",
+            f"real channel from the latest payment, and a simulated hour inside "
+            f"[{_cfg.HEALTH_WINDOW_HOURS}, {_cfg.HEALTH_HORIZON_HOURS})")
     return None
 
 

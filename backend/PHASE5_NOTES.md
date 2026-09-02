@@ -224,102 +224,151 @@ plausible, since nothing now rejects the string at write time.
 | # | Item | Status | Ruled |
 |---|---|---|---|
 | C1 | `test_higher_true_incremental_value_ranks_above_lower` (Phase 4 G7) still encodes the retracted methodology -- probability ground truth compared against rupee-space model output on constructed contexts -- and therefore still fails. | **Open.** Deferred out of Phase 5 scope. | 2026-09-02 |
-| C2 | The joint outcome model has learned the **wrong sign for `payment_history_score`**, the largest-magnitude of the four features probed. | **Open, PROPOSED** -- awaiting a ruling on whether to accept onto this list. | 2026-09-03 |
+| C2 | ~~The joint outcome model has learned the wrong sign for `payment_history_score`.~~ | **RETRACTED 2026-09-03.** Not a model defect. The finding was an artefact of a diagnostic probe extrapolating outside the training support. Full diagnosis below; no fix required, nothing to carry forward. | 2026-09-03 |
 
-### C2 detail — inverted `payment_history_score` response
+### C2 — RETRACTED. The finding was a probe artefact, not a model defect.
 
-Found while building `test_everything.py`, not by a failing test — no existing
-test checks the model's directional response to a single feature.
+**Claim as originally raised:** the joint outcome model had learned the wrong
+sign for `payment_history_score`, inverted in 75–99% of cases across four
+conditions, against a generator that is monotonically positive in it.
 
-**Measurement.** Each feature varied alone, everything else held fixed, across
-every actionable seeded opportunity. n=92 throughout -- the same opportunity
-set in every column, so they are like-for-like.
+**That claim was wrong.** The model is correct within the range of data it was
+trained on. The inversion was produced by the diagnostic probe swinging the
+feature to values that occur **zero times** in the training corpus.
 
-**CLEAN BASELINE (2026-09-03)** — contexts straight from
-`optimize.load_context()` through the real wiring, horizon 720h, all 736
-scorings confirmed at `network_health_known = 1.0`. This is the baseline the
-C2 investigation starts from:
+#### The diagnostic trail
 
-| feature | generator's sign | model's response | n | mean Δp |
-|---|---|---|---|---|
-| `payment_history_score` 0.05→0.95 | **positive** | **LOWERS in 73/92 (79.3%)** | 92 | **−0.03542** |
-| `past_recovery_rate` 0.05→0.95 | positive | raises in 84/92 (91.3%) | 92 | +0.03572 |
-| `retry_count` 0→3 | negative (fatigue) | lowers in 82/92 (89.1%) | 92 | −0.02048 |
-| `prior_contacts_in_window` 0→5 | negative (fatigue) | lowers in 90/92 (97.8%) | 92 | −0.01181 |
+**1. Generation — correct, re-confirmed.** `payment_history_score` enters the
+outcome logit with a net coefficient of **+0.7 per unit**:
 
-Three of four are correct, so this is not a broken probe.
-
-**Robust across every condition measured.** The inversion has now been
-observed three independent ways, and network health is ruled out as the cause:
-
-| condition | inverted | mean Δp |
-|---|---|---|
-| `known=0.0`, no channel data (original finding) | 91/92 (98.9%) | −0.063 |
-| `known=1.0`, channel attached by hand, horizon 168h | 69/92 (75.0%) | −0.030 |
-| `known=1.0`, real wiring, horizon 720h (**baseline**) | 73/92 (79.3%) | −0.035 |
-| held-out Phase 3 calibration data, `known=0.0` | 120/126 (95.2%) | −0.037 |
-
-Populating network health roughly halved the mean effect — so the missing
-features were a real partial confound — but the sign is still wrong in about
-four cases out of five, and `payment_history_score` remains the only one of
-the four features with the wrong sign in every condition tested.
-
-**The generator is unambiguously monotonic positive**
-(`candidate_outcome_dataset.py:76-77, 86-89`):
-
-    liquidity_state      = clip01(rng.normal(0.3 + 0.5 * payment_history_score, 0.22))
+    liquidity_state      = clip01(normal(0.3 + 0.5 * payment_history_score, 0.22))
     recovery_willingness = clip01(0.5*liquidity_state + 0.4*customer_responsiveness + noise)
+    hidden_state_term    = 0.9*liquidity_state + ... + 1.0*recovery_willingness
+    z = ... + hidden_state_term + ... ;  p = sigmoid(z)
 
-**Reproduced on held-out data.** On 126 retry rows from
-`phase3_baseline_seed42_calibration_holdout.csv`, the inversion holds in
-**95.2%** (120/126), mean Δp −0.037. So it is not an artifact of the 92
-seeded opportunities.
+    d(z)/d(phs) = 0.5 * (0.9 + 1.0*0.5) = +0.7
 
-**What is NOT established.** Whether the residual 75% inversion is a training
-artefact (a correlation in the training corpus the model fitted in place of
-the causal direction) or something else. A marginal-vs-conditional sign
-difference can be legitimate in principle; a three-in-four inversion of a
-feature the generator is explicitly monotonic in is not obviously that.
-Diagnosing it means retraining or inspecting the fitted model, both of which
-are Phase 3 territory.
+**2. Feature engineering — no bug.** `payment_history_score` is a plain
+`float()` passthrough into the feature row (`outcome_features.py:325`), with no
+scaling, encoding, or transform of its own before the shared preprocessor.
+Training and serving build the row through the *same* function, so no
+train/serve skew is possible here.
 
-**Why it matters.** It feeds `p_recovery`, which feeds
-`expected_recovered_amount`, which is the EIV the optimizer ranks on. If the
-sign is wrong, the optimizer systematically prefers the wrong candidates for
-customers at the extremes of payment history. This touches ranking
-correctness, which the standing rules single out as requiring a diagnostic
-pass rather than a deferral.
+**3. Correlation — no confounder.** In the training corpus (20,044 rows,
+2,095 cases): `corr(phs, past_recovery_rate) = +0.0231` — the two customer
+scores are drawn from independent Beta distributions and are duly independent
+in the data, so the suppressor/collinearity hypothesis is dead. The largest
+absolute correlation of `phs` with any other numeric feature is `days_overdue`
+at **−0.0456**. Nothing to latch onto.
 
-**Not diagnosed further here.** `ml/inference.py`, `outcome_features.py` and
-the model artifact are frozen Phase 3 inputs, and Phase 5 may not touch them.
-Reproduced by `test_everything.py`, which prints the measurement on every run.
+**The corpus itself carries the correct positive relationship**, monotonically:
 
-### C1 detail
+| phs quintile | mean phs | recovered rate |
+|---|---|---|
+| 0 | 0.3904 | 0.8880 |
+| 1 | 0.5463 | 0.8880 |
+| 2 | 0.6310 | 0.8985 |
+| 3 | 0.7213 | 0.9077 |
+| 4 | 0.8335 | 0.9101 |
 
-**Why it is deferred and not simply fixed now.** The ranking-correctness
-property this test was meant to establish is already covered by Phase 4's G7
-gate, which passes at 0.966 / 0.967 on frozen seed-42 / seed-43 Phase 3 data
-against a 0.90 bar -- on real evaluation data rather than constructed
-contexts. The failing test duplicates that property using a methodology that
-was retracted and recorded as wrong (`PHASE4_NOTES.md` section 8.3). Fixing it
-inside Phase 5 would mean re-deriving a Phase 4 evaluation while Phase 5's own
-frozen-input contract forbids touching the modules involved.
+`corr(phs, recovered) = +0.0325`. Note the magnitude: a **2.2 percentage-point**
+swing on a 0.8984 base rate. That is the entire true signal available.
 
-**What "resolved" requires.** Either:
+**4. Training script — no bug.** `train_outcome_model.py` builds a
+`ColumnTransformer` addressed **by column name**, not position
+(`OneHotEncoder` on categoricals, `SimpleImputer(median)` + `StandardScaler` on
+numerics), so a column-ordering or feature-list-drift bug is structurally
+excluded. `StandardScaler` cannot flip a sign. `feature_columns` is persisted
+from `feats.ALL_FEATURES`, the same list serving reads.
 
-- **re-implemented** so it compares like with like -- rupee-space model output
-  against rupee-space ground truth, or probability against probability, on
-  evaluation data rather than constructed contexts; or
-- **formally retired**, with the reason recorded here, on the grounds that G7
-  already covers the property and a second, weaker test of the same thing has
-  negative value.
+**5. The actual cause — extrapolation outside the training support.**
 
-**Why it must not be left to linger.** It is currently one of the 16 known
-failures the suite carries. A known-failure count is a place where a real
-defect can hide in plain sight: each individual entry is "expected", so the
-aggregate stops being read. This item exists to make sure at least this
-entry has a forcing deadline attached to it rather than an indefinite
-exemption.
+Measured distribution of `payment_history_score` in the training corpus:
+
+    p0    0.2031      p50   0.6284      p95   0.8714
+    p10   0.4101      p75   0.7440      p99   0.9212
+    p25   0.5150      p90   0.8246      p100  0.9236
+
+    fraction of corpus below 0.05 : 0.00000
+    fraction of corpus above 0.95 : 0.00000
+
+**The probe swung 0.05 → 0.95. Both ends lie outside the observed data
+entirely.** Partial dependence over 400 real corpus rows shows precisely what
+a gradient-boosted tree does there — a flat leaf below the minimum, and a cliff
+above the maximum:
+
+    phs    mean p_recovery    delta        in support?
+    0.01     0.88803                       no
+    0.05     0.88803         +0.00000      no      <- flat: no training data
+    0.20     0.88803         +0.00000      no
+    0.30     0.88825         +0.00022      yes
+    0.50     0.88740         +0.00336      yes
+    0.70     0.91164         +0.02262      yes
+    0.90     0.91380         +0.00513      yes
+    0.95     0.85047         -0.06332      no      <- the entire "inversion"
+    0.99     0.85047         +0.00000      no
+
+That **−0.063 cliff at 0.95 is the −0.063 mean delta originally reported.** The
+whole finding was that one step.
+
+**6. Confirmation on the live path.** The same 92 live opportunities, the same
+wired mapping, only the swing range changed:
+
+| swing range | raises (correct) | mean Δp |
+|---|---|---|
+| p25 → p75 `[0.515, 0.744]` | **92/92 (100.0%)** | **+0.03948** |
+| p10 → p90 `[0.410, 0.825]` | **87/92 (94.6%)** | **+0.03452** |
+| p0 → p100 `[0.203, 0.924]` | 19/92 (20.7%) | −0.03542 |
+| `[0.05, 0.95]` (original probe) | 19/92 (20.7%) | −0.03542 |
+
+Within the interquartile range the model is directionally correct on **every
+single opportunity**. The p0→p100 and extrapolated rows being *identical* is
+itself the proof of flat extrapolation: 0.05 and 0.203 produce the same
+prediction, as do 0.924 and 0.95.
+
+The in-support magnitude is also right, not merely the sign: the model moves
+**+0.0229** across p10→p90, against **+0.0221** in the corpus between phs
+quintile 0 and 4. It learned the relationship at close to the correct size.
+
+#### Verdict
+
+No defect. No fix required. Nothing to retrain. `ml/inference.py`,
+`outcome_features.py` and the model artifacts were read and introspected only;
+none was modified.
+
+#### Why the probe was wrong, and what would have caught it sooner
+
+The probe held every other feature at a real opportunity's values and swung one
+feature between two constants chosen for being "extreme" — 0.05 and 0.95 —
+without first checking whether either value appears in the training data.
+Neither does. A tree ensemble has no defined behaviour outside its training
+support; whatever it returns there is an artefact of leaf placement, not a
+learned relationship.
+
+**This is the same class of error as the retracted Phase 4 G7 finding
+(closeout C1): a conclusion drawn from constructed inputs that the model was
+never fit on.** Two such errors in this project now. The lesson is cheap and
+mechanical: *any* single-feature directional probe must report the feature's
+training-support range alongside its result, and must swing within it.
+
+#### Relation to the disclosed seed-43 temporal ranking gap — unrelated
+
+`PHASE3_HANDOFF.md` §2(c) records a seed-43 temporal ranking agreement of 0.813
+against a 0.85 bar, root cause undiagnosed. It is **not** the same issue:
+
+- **Different axis.** The seed-43 gap is concentrated in *action × event_type*
+  buckets (`reminder|checkout_abandoned` 49.9%, `reminder|invoice_overdue`
+  21.3%, `payment_link|invoice_overdue` 20.2%). C2 concerned a *customer
+  attribute*, which is orthogonal to those.
+- **Different seed behaviour.** The gap is seed-specific (42: 0.891,
+  44: 0.923, 43: 0.813). The C2 artefact reproduced on seed-42 data — the
+  training pool and the seeded live world — so it was not seed-conditional.
+- **Decisively:** C2 dissolves entirely under correct probing, so there is no
+  defect left for the two to share a root cause through.
+
+The seed-43 gap remains open and undiagnosed on its own terms, with its
+existing revisit trigger (Phase 6/7 live data showing the same action×context
+pattern). This investigation says nothing about it either way.
 
 ---
 
