@@ -108,17 +108,41 @@ def _agreement(eff, floor):
 
 
 @pytest.fixture(scope="module")
-def effects():
-    """compute_effects() per holdout -- the same function phase3_temporal uses."""
+def effects(tmp_path_factory):
+    """
+    compute_effects() per holdout -- the same function phase3_temporal uses.
+
+    The network-health lookup is built from an ISOLATED, schema-only database,
+    never the ambient recovery.db. Two reasons:
+
+      - determinism. The lookup feeds four model features, so a gate whose
+        number moves with whatever happens to be in the developer's local DB is
+        not a gate. Observed while wiring this up: the same assertions reported
+        0.8886 against an empty DB and 0.8890 against a populated one.
+      - isolation. A correctness gate must not read, and cannot be allowed to
+        write, real application state.
+
+    With no observations the lookup returns known=False for every row, so all
+    rows are evaluated in one consistent regime. That regime is a property of
+    the measurement, not of the machine it runs on, which is what makes the
+    numbers here comparable across runs and across checkouts.
+    """
     import joblib
     import pandas as pd
 
-    from backend.db.db import create_schema, get_connection
+    from backend.db import db as db_module
     from backend.ml import evaluate_outcome_model as ev
     from backend.ml import outcome_features as feats
 
-    conn = get_connection()
-    create_schema(conn)
+    db_path = tmp_path_factory.mktemp("ranking") / "isolated.db"
+    original_path = db_module.DB_PATH
+    db_module.DB_PATH = db_path
+    try:
+        conn = db_module.get_connection()
+        db_module.create_schema(conn)
+    finally:
+        db_module.DB_PATH = original_path
+
     artifact = joblib.load(MODEL_PATH)
     health = feats.NetworkHealthLookup(feats.load_health_observations(conn))
     truth = pd.read_csv(EVAL_DIR / "phase3_baseline_seed42_truth.csv")
