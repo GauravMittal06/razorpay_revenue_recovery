@@ -70,6 +70,104 @@ OPTIMIZER_ENABLED_BY_ENTRY_POINT = {
 
 ENTRY_POINTS = tuple(OPTIMIZER_ENABLED_BY_ENTRY_POINT)
 
+
+# --------------------------------------------------------------------------
+# W7: the shared pipeline
+# --------------------------------------------------------------------------
+# Which entry points serialise their read-decide-write through
+# engine/opportunity_lock.py. Ruling W2/W7, 2026-09-04.
+#
+# Declared as a table rather than a per-call boolean so no caller can opt out
+# of the lock by accident, and so the asymmetry is a property a test can
+# assert in BOTH directions rather than an accident of three call sites.
+#
+# `trigger_event` is deliberately ABSENT, and this is the asymmetry the W6
+# hand-off requires be preserved rather than tidied away. It does not share
+# the race: it mints a fresh opportunity_id per call, so concurrent calls
+# touch different rows, and duplicate delivery of one upstream event is
+# already guarded by the UNIQUE index on opportunities.ingestion_event_id
+# plus the IntegrityError handler that resolves to the winner. Applying the
+# lock uniformly "for consistency" would serialise unrelated event ingestion
+# behind one write lock and buy nothing.
+#
+# `dispatch` is absent for a different reason: the sweep does not run this
+# pipeline at all. It advances an already-decided action and must never call
+# execute_action(), which is not idempotent at the call level. It holds its
+# own two short locks around its compare-and-swap. See dispatch_scheduled.py.
+ENTRY_POINTS_USING_OPPORTUNITY_LOCK = ("batch", "customer_reply")
+
+# Entry points that route through run_recovery_pipeline(). The Phase 5 gate
+# requires "a single shared function is called by all three entry points",
+# verified structurally; this names the three.
+ENTRY_POINTS_USING_SHARED_PIPELINE = ("batch", "trigger_event", "customer_reply")
+
+# Which field feeds classify()'s `error_reason` parameter in the shared
+# pipeline. Ruling W1, 2026-09-04.
+#
+# Before unification the three entry points disagreed: core_loop passed the
+# latest payment's error_reason, handle_customer_reply passed the
+# opportunity's stored root_cause, and trigger_event passed the root_cause it
+# had just been handed. The divergence was introduced by the Phase 1 schema
+# split (commit 7c9fc24) -- before it, BOTH loop entry points called the
+# identical `classify(payment)`.
+#
+# Unified on the opportunity's stored root_cause, because
+# classify()'s output is a COMPLIANCE INPUT on the reply path:
+# decide_action.py's intent-mismatch gate compares
+# classification["root_cause"] against the LLM's mentioned_reason and can
+# return allowed=False / flagged_manual_review. Its own message says
+# "Extracted intent conflicts with STORED root_cause", wording that predates
+# the Phase 1 split (commit e690789). Feeding that gate a per-attempt field
+# would make it compare a customer's claim against something other than the
+# case's diagnosis, and make its own reasoning string false.
+#
+# The payment's error_reason is retained as a fallback only when root_cause
+# is NULL, which preserves core_loop's behaviour for any opportunity whose
+# diagnosis is not recorded on the opportunity itself.
+#
+# Measured behaviourally identical at the time of the ruling: across all 150
+# seeded opportunities (64 payment_failed, 17 with multiple payment
+# attempts), ZERO have a latest-payment error_reason differing from their
+# root_cause. That is structural, not incidental -- the only two writers of a
+# payments row (generate_seed_data.py:322 and trigger_event.py:198) both set
+# error_reason from the opportunity's own root_cause.
+CLASSIFY_ROOT_CAUSE_SOURCE = "opportunity.root_cause"
+CLASSIFY_ROOT_CAUSE_FALLBACK = "latest_payment.error_reason"
+
+
+# Ceiling on how long the unified pipeline may HOLD opportunity_lock.
+# Locked 2026-09-04, before the measurement that checks it was run.
+#
+# Derivation, so the number is not mistaken for one chosen to fit a result:
+# the recorded hold for decide_action + execute_action is p50 5.88 ms /
+# p95 6.24 ms, and the regression this guards against is putting
+# optimize_opportunity() (p50 644 ms warm) inside the hold -- a ~110x jump
+# that takes the number of workers able to queue against
+# db.BUSY_TIMEOUT_MS from ~850 to about 7.
+#
+# 50 ms sits ~8x above the recorded p95, which absorbs scheduling noise on a
+# machine where the full suite already takes ~7 minutes, and ~13x below the
+# ~650 ms failure it must catch. A 10 ms bar would flake without detecting
+# anything this one misses. The raw p50/p95 are reported by the measurement
+# regardless of the bar.
+UNIFIED_LOCK_HOLD_P95_CEILING_MS = 50.0
+
+# Fields excluded from the before/after parity comparison, declared BEFORE
+# the comparison runs so the exclusion list cannot be widened after seeing a
+# diff.
+#
+# The parity test pins time.time() to a fixed value and runs the legacy and
+# unified paths in the SAME process against two freshly-created databases, so
+# timestamps, autoincrement ids and ml_recovery_probability are all
+# deterministic and ARE compared. The only genuinely non-reproducible values
+# are the uuid4-derived identifiers trigger_event mints per call.
+PARITY_VOLATILE_FIELDS = ("opportunity_id", "payment_id", "id")
+
+# Parity tolerance. A determinism property, not a statistical one: with the
+# clock pinned and the inputs identical there is no distribution to set a
+# confidence level against, so the only defensible tolerance is zero.
+PIPELINE_PARITY_FIELD_TOLERANCE = 0
+
 # The runtime kill switch, distinct from the table above.
 #
 # Two different questions, deliberately separated:
@@ -432,6 +530,36 @@ def _check() -> None:
 
     if set(OPTIMIZER_ENABLED_BY_ENTRY_POINT) != set(ENTRY_POINTS):
         raise ValueError("entry-point table and ENTRY_POINTS disagree")
+
+    unknown = set(ENTRY_POINTS_USING_OPPORTUNITY_LOCK) - set(ENTRY_POINTS)
+    if unknown:
+        raise ValueError(
+            f"ENTRY_POINTS_USING_OPPORTUNITY_LOCK names unknown entry points: "
+            f"{sorted(unknown)}")
+
+    unknown = set(ENTRY_POINTS_USING_SHARED_PIPELINE) - set(ENTRY_POINTS)
+    if unknown:
+        raise ValueError(
+            f"ENTRY_POINTS_USING_SHARED_PIPELINE names unknown entry points: "
+            f"{sorted(unknown)}")
+
+    if "trigger_event" in ENTRY_POINTS_USING_OPPORTUNITY_LOCK:
+        raise ValueError(
+            "trigger_event must stay OUT of the lock table: it mints a fresh "
+            "opportunity_id per call and is already guarded by the UNIQUE "
+            "index on ingestion_event_id. The asymmetry is deliberate.")
+
+    if "dispatch" in ENTRY_POINTS_USING_SHARED_PIPELINE:
+        raise ValueError(
+            "the dispatcher must not route through run_recovery_pipeline(): "
+            "it advances an already-decided action and must never call "
+            "execute_action(), which is not idempotent at the call level")
+
+    if UNIFIED_LOCK_HOLD_P95_CEILING_MS >= 500.0:
+        raise ValueError(
+            "the lock-hold ceiling must stay far below the ~650ms cost of "
+            "optimize_opportunity(), or it cannot detect the regression it "
+            "exists to catch")
 
     from backend.data_factory.bank_health_timeseries import WINDOW_HOURS
     if HEALTH_WINDOW_HOURS != WINDOW_HOURS:
