@@ -540,60 +540,24 @@ RANKING_MIN_GAP = 0.12
 RANKING_AGREEMENT_BAR = 0.90
 
 
-@needs_model
-@pytest.mark.gate("phase4.ranking")
-def test_higher_true_incremental_value_ranks_above_lower(seeded_db, capsys):
-    """The tightened correctness gate: where the generator says candidate A
-    is decisively better than B, the optimizer must rank A above B.
+# ---------------------------------------------------------------------------
+# test_higher_true_incremental_value_ranks_above_lower was REMOVED 2026-09-03.
+#
+# It compared the generator's PROBABILITY-space ground truth against the
+# model's RUPEE-space output --
+#     truth = a["analytic_p"]         - b["analytic_p"]
+#     model = a["incremental_amount"] - b["incremental_amount"]
+# -- on hand-constructed contexts. Those two orderings are allowed to disagree
+# (PHASE4_NOTES 8.6, ~16% rupee-space pair-order sensitivity), and section 8.2
+# isolated the fault exactly: same contexts, same ground truth, 0.958 in
+# probability space vs 0.812 in rupee space. The comparison axis was the bug.
+#
+# Replaced by tests/test_phase4_ranking_correctness.py, which implements the
+# locked phase3_temporal ranking_pair_definition like-for-like on frozen
+# held-out data, asserted at two operating points. Closeout item C1.
+# ---------------------------------------------------------------------------
 
-    Evaluated as direction agreement per scenario against Phase 3's own 0.90
-    bar. The full table is printed on every run whether it passes or fails,
-    so the numbers are visible rather than collapsed into a boolean.
 
-    NOTE ON ATTRIBUTION: this gate measures the MODEL's ordering quality as
-    surfaced through the optimizer. Phase 4 owns "the optimizer ranks
-    faithfully by EIV" (asserted separately, and it holds); Phase 3's frozen
-    artifact owns "the EIV estimate is right". A failure here is evidence
-    about the artifact, not about the ranking machinery.
-    """
-    table, failures, uncovered = [], [], []
-
-    for event_type, root_cause in RANKING_SCENARIOS:
-        agree = total = 0
-        inversions = []
-        for adverse in (False, True):
-            overrides = dict(ADVERSE_CONTEXT) if adverse else {}
-            context = make_context(event_type=event_type,
-                                   root_cause=root_cause, **overrides)
-            rows = _score_scenario(seeded_db, context)
-            a, t, inv = _direction_agreement(rows, RANKING_MIN_GAP)
-            agree, total = agree + a, total + t
-            inversions.extend(inv)
-
-        if total == 0:
-            uncovered.append(f"{event_type}/{root_cause}")
-            table.append(f"  {event_type}/{root_cause}: NO DECISIVE PAIRS "
-                         f"(candidate space never separates by {RANKING_MIN_GAP})")
-            continue
-
-        rate = agree / total
-        table.append(f"  {event_type}/{root_cause}: {rate:.3f} "
-                     f"over {total} decisive pairs")
-        if rate < RANKING_AGREEMENT_BAR:
-            failures.append(f"{event_type}/{root_cause}: {rate:.3f} < "
-                            f"{RANKING_AGREEMENT_BAR} ({total} pairs); "
-                            f"e.g. {inversions[0] if inversions else 'n/a'}")
-
-    report = ("\nPhase 4 ranking-correctness, direction agreement at "
-              f"ground-truth gap >= {RANKING_MIN_GAP} "
-              f"(bar {RANKING_AGREEMENT_BAR}, from Phase 3's lock):\n"
-              + "\n".join(table))
-    with capsys.disabled():
-        print(report)
-
-    assert not failures, (
-        report + "\n\nScenarios below the bar:\n  " + "\n  ".join(failures)
-        + "\n\nUncovered scenarios: " + (", ".join(uncovered) or "none"))
 
 
 @needs_model

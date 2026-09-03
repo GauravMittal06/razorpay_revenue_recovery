@@ -223,7 +223,52 @@ plausible, since nothing now rejects the string at write time.
 
 | # | Item | Status | Ruled |
 |---|---|---|---|
-| C1 | `test_higher_true_incremental_value_ranks_above_lower` (Phase 4 G7) still encodes the retracted methodology -- probability ground truth compared against rupee-space model output on constructed contexts -- and therefore still fails. | **Open.** Deferred out of Phase 5 scope. | 2026-09-02 |
+| C1 | `test_higher_true_incremental_value_ranks_above_lower` encoded the retracted methodology -- probability ground truth compared against rupee-space model output on constructed contexts. | **RESOLVED 2026-09-03 by re-implementation, not retirement.** Replaced by `tests/test_phase4_ranking_correctness.py`. Measured 0.8886 / 0.8966 at the locked floor and 0.9511 / 0.9489 at the G7 floor; both bars met at their own floors. Evidence below. | 2026-09-03 |
+
+### C1 detail — ranking correctness, re-implemented
+
+**What was wrong.** The old test compared across measurement spaces:
+
+    truth = a["analytic_p"]         - b["analytic_p"]          # probability
+    model = a["incremental_amount"] - b["incremental_amount"]  # rupees
+
+Those orderings are permitted to disagree — `E[amount|recovered]` varies per
+candidate, the ~16% rupee-space pair-order sensitivity disclosed in
+`PHASE4_NOTES` §8.6. Phase 4 §8.2 had already isolated the fault exactly: same
+contexts, same ground truth, **0.958 in probability space vs 0.812 in rupee
+space**. The comparison axis was the bug. The test also ran on hand-constructed
+contexts — the same error that produced the retracted C2 finding.
+
+**What replaced it.** `tests/test_phase4_ranking_correctness.py` implements
+`locked_thresholds.json / phase3_temporal / ranking_pair_definition` verbatim —
+a definition locked **2026-08-30T15:32:43Z**, before Phase 4 began and long
+before this measurement was conceived. Like-for-like: probability-space
+treatment effect on both sides, both against the same `do_nothing` baseline
+within the same case, on frozen held-out data. The pairing and effect
+computation are **reused** from `evaluate_outcome_model.compute_effects()` —
+the same function the trusted `phase3_temporal` gate calls — rather than
+reimplemented, so the two gates cannot drift into measuring different things.
+
+**Measured** (printed on every run, pass or fail):
+
+| holdout | floor 0.05 (locked, bar 0.85) | floor 0.12 (G7, bar 0.90) |
+|---|---|---|
+| temporal (held out in time) | **0.8886** (2745/3089) | **0.9511** (700/736) |
+| calibration (unseen cases) | **0.8966** (2828/3154) | **0.9489** (705/743) |
+| seed-43 (unseen world, measured not asserted) | 0.8921 (17888/20052) | 0.9568 (4054/4237) |
+
+**No threshold was loosened, and the test asserts at both operating points so
+the result cannot depend on which bar is picked.** The old test carried a 0.90
+bar borrowed, by its own comment, from "Phase 3's own 0.90 bar" — which belongs
+to `ground_truth_treatment_effect`, a bucket-level direction measurement, not
+pairwise within-case ranking. Agreement rises monotonically with the effect
+floor (0.889 → 0.928 → 0.951 → 0.991 on the temporal holdout at floors
+0.05/0.08/0.12/0.20), so a bar is only meaningful alongside the floor it was set
+at. This implementation reproduces Phase 4's independently-reported 0.966/0.967
+regime at G7's own 0.12 floor, which is what validates it.
+
+A third test asserts the monotonicity itself: if agreement ever fell as the
+generator separated pairs *more* decisively, the measurement would be suspect.
 | C2 | ~~The joint outcome model has learned the wrong sign for `payment_history_score`.~~ | **RETRACTED 2026-09-03.** Not a model defect. The finding was an artefact of a diagnostic probe extrapolating outside the training support. Full diagnosis below; no fix required, nothing to carry forward. | 2026-09-03 |
 
 ### C2 — RETRACTED. The finding was a probe artefact, not a model defect.
