@@ -340,7 +340,32 @@ def test_method_change_has_no_reachable_executor_path(source_files):
     would let the system mutate a customer's payment instrument -- an
     authority nobody granted it. Comments and docstrings are excluded,
     since the boundary is allowed to be *documented*, only not implemented.
+
+    AMENDED 2026-09-04 (Phase 5, W7 / ruling A10). The match was a plain
+    substring test, so it flagged the legitimate `"method_changed"` feature
+    key -- the generator's flag for "this candidate carries a different
+    payment method" -- in data_factory/ and ml/. 14 false-positive offenders,
+    every one of them a feature name, none of them an action.
+
+    Tightened to a word-boundary match. This is a correction of a broken
+    matcher, NOT a loosened bar: `(?<![0-9A-Za-z_])method_change(?![0-9A-Za-z_])`
+    still flags any real `method_change` token and now correctly ignores
+    `method_changed` (trailing `d`) and `_is_method_change` (leading `_`).
+
+    READ THIS BEFORE TRUSTING A PASS. Even tightened, this test proves very
+    little, because **there is no `method_change` action type in this system
+    at all** -- the token it searches for structurally cannot appear. A
+    method change is `action_type="retry"` carrying a `method` different from
+    the opportunity's current one, so the boundary is a property of the
+    (action, method) pair and no string search can establish it. It is
+    retained only as a cheap tripwire against someone introducing such a
+    token. The boundary is verified for real by the behavioural and
+    structural tests in tests/test_phase5_fallthrough.py, by
+    phase5_config.METHOD_CHANGE_IS_EXECUTABLE's import-time raise, and by
+    test_the_dispatcher_cannot_fire_a_method_change in
+    tests/test_phase5_dispatch.py. See PHASE5_NOTES.md section 0.1.
     """
+    token = re.compile(r"(?<![0-9A-Za-z_])method_change(?![0-9A-Za-z_])")
     offenders = []
     for path in source_files:
         tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"), str(path))
@@ -350,7 +375,7 @@ def test_method_change_has_no_reachable_executor_path(source_files):
                                         ast.FunctionDef, ast.AsyncFunctionDef))}
         for node in ast.walk(tree):
             if (isinstance(node, ast.Constant) and isinstance(node.value, str)
-                    and "method_change" in node.value
+                    and token.search(node.value)
                     and id(node.value) not in docstrings):
                 offenders.append(
                     f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}")

@@ -10,11 +10,12 @@ message phrasing.
 """
 
 from backend.db.db import get_connection
-from backend.engine.classify import classify
-from backend.engine.decide_action import decide_action
-from backend.engine.execute_action import execute_action
-from backend.engine.opportunity_lock import opportunity_lock
-from backend.engine.deliver_message import deliver_recovery_message
+from backend.engine.pipeline import run_recovery_pipeline
+
+# Which entry point this is, for the shared pipeline's lock and optimizer
+# policy tables. "batch" is asynchronous, so it is one of the two entry
+# points the optimizer may be enabled for once the latency budget is met.
+ENTRY_POINT = "batch"
 
 
 def _latest_payment(opportunity_id: str, conn):
@@ -36,26 +37,18 @@ def run_cycle():
     results = []
     for opportunity in opportunities:
         latest_payment = _latest_payment(opportunity["opportunity_id"], conn)
-        classification = classify(
-            opportunity["event_type"],
-            latest_payment.get("error_reason") if latest_payment else opportunity.get("root_cause"),
+        # W7: the whole classify -> optimize -> authorize -> execute ->
+        # message sequence now lives in ONE shared function, called by this
+        # loop, trigger_event.py and handle_customer_reply.py alike. The lock
+        # boundary, the optimizer's position outside it, and the decision_id
+        # that delivery needs are all decided there, so this entry point
+        # cannot drift away from the other two.
+        outcome = run_recovery_pipeline(
+            opportunity, conn,
+            entry_point=ENTRY_POINT,
+            latest_payment=latest_payment,
         )
-        # Reading cooldown and acting on it must be one indivisible step, or
-        # two overlapping cycles both read "no recent contact" and both
-        # contact the same customer. See engine/opportunity_lock.py.
-        with opportunity_lock(conn):
-            decision = decide_action(opportunity, classification, conn, latest_payment=latest_payment)
-            result = execute_action(opportunity, decision, conn)
-        # Message delivery is outside the lock deliberately: it is an outbound
-        # side effect on an already-committed decision, and holding the write
-        # lock across it would serialise the whole batch on message generation.
-        # decision_id names the execution this delivery belongs to, so a
-        # scheduled action is not announced to the customer before it fires
-        # (ruling A7). Without it delivery fails closed rather than guessing.
-        deliver_recovery_message(opportunity, classification, decision, conn,
-                                 latest_payment=latest_payment,
-                                 decision_id=result["decision_id"])
-        results.append(result)
+        results.append(outcome["execution_result"])
 
     conn.close()
     return results

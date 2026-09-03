@@ -15,12 +15,13 @@ rather than re-derived from a payment's error_reason each time.
 
 import time
 
-from backend.engine.classify import classify
-from backend.engine.decide_action import decide_action
-from backend.engine.execute_action import execute_action
-from backend.engine.opportunity_lock import opportunity_lock
-from backend.engine.deliver_message import deliver_recovery_message
+from backend.engine.pipeline import run_recovery_pipeline
 from backend.llm.parse_intent import parse_reply_intent
+
+# Request-synchronous entry point. Uses opportunity_lock (it reads cooldown
+# then acts on it, exactly like the batch loop); optimizer stays off here
+# while the latency budget is unmet.
+ENTRY_POINT = "customer_reply"
 
 
 def _latest_payment(opportunity_id: str, conn):
@@ -89,29 +90,27 @@ def handle_customer_reply(opportunity_id: str, customer_message: str, conn) -> d
     # already-existing fallback handling. No new outcome value or schema
     # change on error -- message row above remains the durable record.
     try:
-        classification = classify(opportunity["event_type"], opportunity.get("root_cause"))
-        dispute_flag = parsed["intent"] == "dispute"
-        # Same indivisibility the batch loop needs, for the same reason: this
-        # entry point also reads cooldown and then acts on it, so two replies
-        # arriving together on one opportunity could otherwise both be told
-        # "no recent contact" and both fire. See engine/opportunity_lock.py.
-        with opportunity_lock(conn):
-            decision = decide_action(
-                opportunity, classification, conn,
-                latest_payment=latest_payment,
-                extracted_intent=parsed["intent"],
-                intent_confidence=parsed["confidence"],
-                mentioned_reason=parsed["mentioned_reason"],
-                dispute_flag=dispute_flag,
-            )
-            result = execute_action(opportunity, decision, conn)
-        # Outside the lock: an outbound side effect on an already-committed
-        # decision, and it calls the LLM, which must not be held under a write
-        # lock.
-        # decision_id names the execution this delivery belongs to (ruling A7).
-        deliver_recovery_message(opportunity, classification, decision, conn,
-                                 latest_payment=latest_payment,
-                                 decision_id=result["decision_id"])
+        # W7: the identical shared pipeline core_loop.py and trigger_event.py
+        # run. The intent fields are this entry point's distinguishing input
+        # -- they are what arms decide_action()'s confidence and
+        # intent-mismatch gates, which no other entry point triggers.
+        #
+        # The try/except around this stays HERE rather than moving into the
+        # pipeline: converting an unexpected failure into
+        # status="engine_error" is this function's own contract, and hoisting
+        # it would impose it on the other two entry points, which currently
+        # let exceptions propagate.
+        outcome = run_recovery_pipeline(
+            opportunity, conn,
+            entry_point=ENTRY_POINT,
+            latest_payment=latest_payment,
+            extracted_intent=parsed["intent"],
+            intent_confidence=parsed["confidence"],
+            mentioned_reason=parsed["mentioned_reason"],
+            dispute_flag=parsed["intent"] == "dispute",
+        )
+        decision = outcome["decision"]
+        result = outcome["execution_result"]
     except Exception as e:
         return {
             "opportunity_id": opportunity_id,

@@ -35,10 +35,12 @@ import time
 import uuid
 import sqlite3
 
-from backend.engine.classify import classify
-from backend.engine.decide_action import decide_action
-from backend.engine.execute_action import execute_action
-from backend.engine.deliver_message import deliver_recovery_message
+from backend.engine.pipeline import run_recovery_pipeline
+
+# Request-synchronous entry point: the optimizer stays disabled here while
+# the ~750ms latency budget is unmet, and it does NOT use opportunity_lock
+# (see ENTRY_POINTS_USING_OPPORTUNITY_LOCK for why the asymmetry is correct).
+ENTRY_POINT = "trigger_event"
 
 VALID_EVENT_TYPES = {"checkout_abandoned", "payment_failed", "invoice_overdue"}
 VALID_ROOT_CAUSES = {
@@ -214,15 +216,28 @@ def trigger_event(event_type: str, amount: int, conn,
     )
     conn.commit()
 
-    # Exact same 4 calls core_loop.py makes per opportunity -- same shared
-    # engine, no second pipeline, no other opportunity touched.
-    classification = classify(event_type, root_cause)
-    decision = decide_action(opportunity, classification, conn, latest_payment=payment)
-    result = execute_action(opportunity, decision, conn)
-    # decision_id names the execution this delivery belongs to (ruling A7).
-    delivery = deliver_recovery_message(opportunity, classification, decision, conn,
-                                        latest_payment=payment,
-                                        decision_id=result["decision_id"])
+    # W7: the identical shared pipeline core_loop.py and
+    # handle_customer_reply.py run -- one function, not a re-sequencing of
+    # the same calls. Everything above this line (validation, the
+    # duplicate-event short-circuit, the opportunity and payment INSERTs) is
+    # this entry point's own work and stays here; only the recovery pipeline
+    # is shared.
+    #
+    # Note this entry point is deliberately absent from
+    # ENTRY_POINTS_USING_OPPORTUNITY_LOCK, so the pipeline runs it without
+    # the lock: a fresh opportunity_id per call means concurrent calls touch
+    # different rows, and duplicate delivery of one upstream event is already
+    # guarded by the UNIQUE index on ingestion_event_id plus the
+    # IntegrityError handler above.
+    outcome = run_recovery_pipeline(
+        opportunity, conn,
+        entry_point=ENTRY_POINT,
+        latest_payment=payment,
+    )
+    classification = outcome["classification"]
+    decision = outcome["decision"]
+    result = outcome["execution_result"]
+    delivery = outcome["delivery"]
 
     return {
         "status": "ok",

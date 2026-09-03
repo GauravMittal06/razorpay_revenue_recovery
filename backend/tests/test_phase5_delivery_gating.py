@@ -184,35 +184,76 @@ def test_delivery_without_a_verifiable_execution_fails_closed(empty_db):
 
 
 @pytest.mark.gate("phase5.delivery_gating")
-def test_every_production_caller_supplies_the_execution_it_delivers_for(source_files):
+def test_the_recovery_path_has_exactly_one_delivery_call_site(source_files):
     """
     Structural, not behavioural. The fail-closed default above means a caller
-    that forgets goes silent rather than double-contacting -- but silence is
-    still a defect, so the three production entry points are pinned to pass
-    the decision they executed.
+    that forgets `decision_id` goes silent rather than double-contacting --
+    but silence is still a defect, so the call site is pinned.
 
-    W7 unifies these three into one pipeline; this test is what makes that
-    unification unable to drop the argument on the way.
+    AMENDED 2026-09-04 by W7, and disclosed as an amendment rather than a
+    silent edit. It previously asserted a delivery call in EACH of
+    core_loop.py, trigger_event.py and handle_customer_reply.py. W7 unified
+    those three onto engine/pipeline.py, so that premise became false --
+    the three no longer deliver, the shared pipeline does.
+
+    The replacement is STRICTLY STRONGER, not a relaxation to obtain a pass.
+    Before: three call sites, each of which had to pass decision_id --
+    a fourth caller could appear anywhere and be missed. After: the recovery
+    path has EXACTLY ONE delivery call site, it is in the shared pipeline,
+    and it passes decision_id. There is no longer anywhere for a call to
+    drift to.
     """
     import re
 
-    callers = {"core_loop.py", "handle_customer_reply.py", "trigger_event.py"}
-    seen = {}
-    for path in source_files:
-        if path.name not in callers:
-            continue
-        text = path.read_text(encoding="utf-8")
-        # Require a non-empty argument list: `deliver_recovery_message()` with
-        # no arguments is a prose reference in a docstring, not a call site.
-        for call in re.findall(
-                r"deliver_recovery_message\((?:[^()]|\([^()]*\))+\)", text):
-            seen.setdefault(path.name, []).append(call)
+    pattern = r"deliver_recovery_message\((?:[^()]|\([^()]*\))+\)"
+    # dispatch_scheduled.py legitimately delivers too, for an action it is
+    # firing from the queue; deliver_message.py is the definition itself.
+    exempt = {"deliver_message.py", "dispatch_scheduled.py"}
 
-    missing = {name: calls for name, calls in seen.items()
-               if not all("decision_id=" in c for c in calls)}
-    assert seen.keys() == callers, (
-        f"expected a delivery call in each of {sorted(callers)}, found "
-        f"{sorted(seen)}")
-    assert not missing, (
-        "these callers deliver without naming the execution, so delivery "
-        f"fails closed and the customer is never contacted: {missing}")
+    call_sites = {}
+    for path in source_files:
+        if path.name in exempt or "engine" not in path.parts:
+            continue
+        calls = re.findall(pattern, path.read_text(encoding="utf-8"))
+        if calls:
+            call_sites[path.name] = calls
+
+    assert list(call_sites) == ["pipeline.py"], (
+        "the recovery path must deliver from exactly one place, the shared "
+        f"pipeline; found call sites in {sorted(call_sites)}")
+    assert all("decision_id=" in c for c in call_sites["pipeline.py"]), (
+        "the shared pipeline delivers without naming the execution, so "
+        "delivery fails closed and no customer is ever contacted: "
+        f"{call_sites['pipeline.py']}")
+
+
+@pytest.mark.gate("phase5.shared_pipeline")
+def test_no_entry_point_bypasses_the_shared_pipeline(source_files):
+    """
+    The other half: the three entry points must not reach past
+    run_recovery_pipeline() to the engine calls it owns. A caller that still
+    called decide_action() or execute_action() itself would be a second
+    pipeline wearing the first one's name.
+    """
+    import re
+
+    entry_points = {"core_loop.py", "trigger_event.py", "handle_customer_reply.py"}
+    forbidden = ("decide_action", "execute_action", "deliver_recovery_message",
+                 "opportunity_lock", "classify")
+
+    offenders = {}
+    for path in source_files:
+        if path.name not in entry_points:
+            continue
+        body = "\n".join(
+            line for line in path.read_text(encoding="utf-8").splitlines()
+            if not line.lstrip().startswith("#"))
+        body = body.split('"""')[-1]          # drop the module docstring
+        hits = [name for name in forbidden
+                if re.search(rf"\b{name}\s*\(", body)]
+        if hits:
+            offenders[path.name] = hits
+
+    assert not offenders, (
+        "these entry points call pipeline-owned functions directly instead "
+        f"of going through run_recovery_pipeline(): {offenders}")

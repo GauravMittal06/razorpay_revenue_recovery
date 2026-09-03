@@ -223,15 +223,16 @@ plausible, since nothing now rejects the string at write time.
 > leave by being absorbed into a "known failures" count and stopping being
 > counted.
 >
-> **Status as of 2026-09-04: one open item (C3).** C1 fixed by
-> re-implementation, C2 withdrawn as a probe artefact, C3 opened by W6 and
-> deliberately not fixed in it. Resolved entries stay below with their
-> evidence rather than being deleted — a closeout list that erases its own
-> history cannot be audited. Add new items here as they are found.
+> **Status as of 2026-09-04: two open items (C3, C4).** C1 fixed by
+> re-implementation, C2 withdrawn as a probe artefact, C3 opened by W6, C4
+> opened by W7. Resolved entries stay below with their evidence rather than
+> being deleted — a closeout list that erases its own history cannot be
+> audited. Add new items here as they are found.
 
 | # | Item | Status | Ruled |
 |---|---|---|---|
 | C1 | `test_higher_true_incremental_value_ranks_above_lower` encoded the retracted methodology -- probability ground truth compared against rupee-space model output on constructed contexts. | **RESOLVED 2026-09-03 by re-implementation, not retirement.** Replaced by `tests/test_phase4_ranking_correctness.py`. Measured 0.8886 / 0.8966 at the locked floor and 0.9511 / 0.9489 at the G7 floor; both bars met at their own floors. Evidence below. | 2026-09-03 |
+| C4 | **The first `opportunity_lock` hold in any process is ~780 ms, not ~6 ms.** `decide_action()` loads the ML model lazily (`_load_ml_model()`), and the first call in a process happens inside `decide_action()` — which the pipeline calls INSIDE the lock. So the very first hold after a restart includes a `joblib.load`. Measured from a cold process, 8 consecutive opportunities: hold #1 **779.35 ms**, then 9.75 / 6.23 / 6.00 / 7.23 / 6.46 / 5.89 / 6.41 ms — a **121.5x** spike, and the warm figures match the 5.88 ms p50 recorded in `opportunity_lock.py`. Against `db.BUSY_TIMEOUT_MS = 5000` this puts the first cycle after any restart in the same regime the optimizer was banned from the lock for: roughly the seventh concurrent worker fails with "database is locked". | **OPEN — found while measuring W7's lock hold, deliberately not fixed in W7.** Not introduced by W7: the pre-W7 sequence shows it too (p95 946 ms on the same machine before the model warms). The fix belongs to the compliance authority's loading strategy — warming the model before the lock is entered, or at import — and changing when a frozen-adjacent module loads its artifact needs its own ruling. Pinned as a documented limitation by `test_the_first_lock_hold_is_inflated_by_the_lazy_model_load`, which asserts the limitation rather than a guarantee, and skips with a printed reason when the model is already resident. | 2026-09-04 |
 | C3 | `payment_link` is dispatchable but has no delivery path. `SoT.md:63` names it among the tools the rule engine dispatches; `phase5_config.EXECUTABLE_ACTIONS` includes it; `decide_action.CONTACT_ACTIONS` treats it as customer contact and applies the contact-hours window to it. But `deliver_message.ELIGIBLE_ACTIONS` is `{"retry", "reminder"}`, so a dispatched `payment_link` writes **no `messages` row and produces no customer-visible artifact at all**. | **OPEN — found while planning W6 (ruling A8, 2026-09-03), deliberately not fixed in W6.** Fixing it means deciding what a payment-link message *is* (it must carry a link this system does not mint), which is a product question, not a dispatch question. W6 neither widened nor narrowed the gap; its idempotency proof deliberately uses `reminder` because `payment_link` would report zero customer-visible actions whether or not the dispatcher worked. | 2026-09-03 |
 
 ### C1 detail — ranking correctness, re-implemented
@@ -881,6 +882,126 @@ small mechanism, not a migration framework.
 
 ---
 
+## 1i. W7 — shared pipeline unification
+
+`engine/pipeline.py` is new. `run_recovery_pipeline()` is the single
+`classify → optimize → authorize → execute → message` function, called by
+`core_loop.py`, `trigger_event.py` and `handle_customer_reply.py`. The gate
+requires this be verified *structurally* — "a single shared function is
+called by all three entry points" — not merely by matching output.
+
+### The drift the three had already accumulated (ruling W1)
+
+They disagreed about what feeds `classify()`'s `error_reason`:
+
+| entry point | passed |
+|---|---|
+| `core_loop` | `latest_payment.error_reason`, falling back to `opportunity.root_cause` |
+| `handle_customer_reply` | `opportunity.root_cause` |
+| `trigger_event` | the `root_cause` argument |
+
+**Introduced by the Phase 1 schema split (`7c9fc24`), not designed.** Before
+it, both loop entry points called the identical `classify(payment)`
+(`e690789`). The commit message is bare, there is no Phase 1 notes document,
+and the decision log contains no entry ruling on it.
+
+**But `handle_customer_reply`'s choice turned out to be substantively right,
+which reversed the initial recommendation.** `classification["root_cause"]`
+is a **compliance input** on the reply path: `decide_action.py:571-586`'s
+intent-mismatch gate fires only when intent arguments are supplied — only
+that entry point does — compares `classification["root_cause"]` against the
+LLM's `mentioned_reason`, and on conflict returns `allowed=False`,
+`outcome="flagged_manual_review"`. Its own message reads *"Extracted intent
+conflicts with **stored root_cause**"*, wording introduced in `e690789`,
+**before** the split — independent corroboration older than the divergence.
+On `core_loop` the gate never fires, so there the field is ML input and
+message phrasing only, exactly as that module's docstring claims.
+
+Unified on `opportunity.root_cause` with `latest_payment.error_reason` as a
+NULL-fallback. **Behaviourally identical, and structurally so:** across all
+150 seeded opportunities (64 `payment_failed`, 17 multi-attempt, 0 with no
+payment row) there are zero cases where the two differ — because the only two
+writers of a `payments` row, `generate_seed_data.py:322` and
+`trigger_event.py:198`, both set `error_reason` from the opportunity's own
+`root_cause`.
+
+### Parity evidence
+
+Measured **in one process, against two freshly-seeded databases, with
+`time.time()` pinned**, so timestamps, autoincrement ids and
+`ml_recovery_probability` are all directly comparable rather than normalised
+away. The legacy sequences are held verbatim in the test file, copied from
+`9ae5b77`, with the `git show` command to re-verify each in its docstring.
+
+    batch parity        : 92 opportunities compared, 0 differing (tolerance 0)
+      recovery_decisions : legacy 92  unified 92
+      recovery_executions: legacy 86  unified 86
+      messages           : legacy  1  unified  1
+    trigger_event parity: 6 specs compared, 0 differing
+                          (all 3 event types + both invoice branches + replay)
+    reply parity        : 5 pairs compared, 0 differing
+                          outcomes exercised: ['executed', 'flagged_manual_review']
+
+The reply set deliberately includes the low-confidence and intent-mismatch
+cases, so the branches that can **block** are compared, not just the ones
+that act.
+
+### The four hard constraints
+
+1. **`opportunity_lock` adopted unchanged.** Not edited. Its public shape is
+   pinned by a test. Which entry points use it is now the declared table
+   `ENTRY_POINTS_USING_OPPORTUNITY_LOCK`, asserted **both ways** — the two
+   that lock do, and `trigger_event` does not — with an import-time raise if
+   anyone adds `trigger_event` to it.
+2. **Optimizer outside the lock — measured, not just structural.**
+
+       legacy (pre-W7): lock hold p50 28.06 ms   p95 31.79 ms
+       optimizer OFF  : lock hold p50 25.21 ms   p95 30.57 ms | total p50  29.54 ms
+       optimizer ON   : lock hold p50 23.85 ms   p95 25.92 ms | total p50 796.39 ms
+       ceiling (committed before the run): 50.0 ms
+
+   Total time rises ~27x with the optimizer on while the **lock hold stays
+   flat** — the direct empirical form of the proof. Legacy vs unified also
+   matches, so W7 did not change the hold.
+3. **`decision_id` passthrough, four independent proofs.** One call site in
+   the recovery path (`pipeline.py`) and it passes `decision_id`; no entry
+   point calls `decide_action`/`execute_action`/`deliver_recovery_message`/
+   `classify`/`opportunity_lock` directly any more; each entry point produces
+   exactly 1 agent message; and a **negative control** that strips
+   `decision_id` from the shared call reproduces `status=
+   skipped_unverified_execution` with **0 messages**.
+4. **`execute_action()` called exactly once** per pipeline run, asserted per
+   entry point with a call counter; and `trigger_event`'s duplicate-event
+   replay runs the pipeline **0** times, verified with a spy.
+
+### An amended test, disclosed
+
+`test_every_production_caller_supplies_the_execution_it_delivers_for`
+asserted a delivery call in *each of the three* entry points. Unification
+made that premise false. Replaced by
+`test_the_recovery_path_has_exactly_one_delivery_call_site`, which is
+**strictly stronger**: before, three sites each had to pass `decision_id` and
+a fourth could appear unnoticed; now the recovery path has exactly one, and
+there is nowhere for a call to drift to. Paired with
+`test_no_entry_point_bypasses_the_shared_pipeline`.
+
+### Why the dispatcher is not a caller
+
+`dispatch_scheduled.py` advances an already-decided action and must never
+call `execute_action()`, which is not idempotent at the call level. Routing
+it through the shared pipeline would violate that. `phase5_config._check()`
+raises if `dispatch` is ever added to `ENTRY_POINTS_USING_SHARED_PIPELINE`.
+
+### What stayed in the callers, deliberately
+
+`trigger_event`'s validation, dedup short-circuit and INSERTs;
+`handle_customer_reply`'s history-before-insert ordering, intent parse,
+fail-closed message persist, and its `try/except → status="engine_error"`.
+Hoisting that last one would impose it on the other two, which currently let
+exceptions propagate — a behaviour change wearing the costume of a cleanup.
+
+---
+
 ## 2. Open obligations carried into later steps
 
 - **Tighten `test_method_change_has_no_reachable_executor_path`.** It
@@ -902,11 +1023,24 @@ small mechanism, not a migration framework.
 - **`"executed"` is a member of both closed vocabularies** —
   `DECISION_OUTCOMES` (compliance) and `EXECUTION_STATES` (lifecycle). Live
   collision; the W8 structural tests pin it rather than rename it.
-- **`allowed` is read by no production code.** `execute_action()` branches on
-  `outcome`; `allowed` is read only by tests, tied to `outcome` by convention
-  asserted at `test_compliance_regression.py:522`. So "only `allowed: True`
-  reaches the executor" is proven through a proxy field, not the permission
-  bit. Proposed to make mechanical in W3/W8, not yet ruled on.
+- **~~`allowed` is read by no production code.~~ CORRECTED 2026-09-04 (W7,
+  ruling W8/A10) — the sentence was false as written.** `allowed` IS read by
+  production code, in three places: `decide_action.py:344` and `:481` (the
+  ranked path, added by W3) and `dispatch_scheduled.py:202` (added by W6).
+  The claim was true when first written and went stale as those two steps
+  landed.
+
+  **The substance survives, and it is the part that mattered:**
+  `execute_action()` still branches on `outcome == "executed"` and never on
+  `allowed`, so "only `allowed: True` reaches the executor" is still proven
+  at the executor boundary through a proxy field rather than the permission
+  bit. **RESOLVED in W7** — the equivalence is now mechanical rather than
+  conventional: `tests/test_phase5_authority_invariants.py` asserts
+  `allowed == (outcome == "executed")` across all 25 corpus scenarios
+  (measured: 0 violations), asserts that an execution row is written exactly
+  when `allowed` is true, and pins that the executor still branches on
+  `outcome` so a future switch to `allowed` prompts retiring the rationale
+  rather than leaving it stale a second time.
 - **Latency.** p95 measured at 747.9 / 737.5 / 724.3 ms across three runs
   against the declared 250 ms budget (`optimizer_config.LATENCY_BUDGET_MS`).
   Not met, unchanged from Phase 4, and no Phase 5 budget was invented to
@@ -915,15 +1049,35 @@ small mechanism, not a migration framework.
 
 ### Added by W6 (2026-09-04)
 
-- **"W8" is referenced in this section but is not a planned step.** Three
-  obligations above defer work to "W8" — tightening
-  `test_method_change_has_no_reachable_executor_path`, the structural tests
-  that pin the `'executed'` vocabulary collision, and making the
-  `allowed`-vs-`outcome` proxy mechanical. But `PHASE5_PARTIAL_HANDOFF.md` and
-  `EXECUTION_PLAN.md` both scope Phase 5 as W0–W7, with no W8. Either those
-  three items belong inside W7 or W8 must be declared as its own step.
-  **Not a W6 blocker; must be resolved before Phase 5 sign-off** (ruling A10)
-  so the work does not quietly disappear between the two documents.
+- **~~"W8" is referenced in this section but is not a planned step.~~
+  CLOSED 2026-09-04 by ruling A10: there is no W8; all three items were
+  folded into W7 and are done.** The resolution was not a judgement call —
+  each of the three appears verbatim in `EXECUTION_PLAN.md`'s own Phase 5
+  *Validation/tests* list, so they were always Phase 5 work and W7 is Phase
+  5's last step:
+
+  | "W8" item | The Phase 5 validation clause it already was | Status |
+  |---|---|---|
+  | `allowed`-vs-`outcome` made mechanical | "The existing authority tests (only `decide_action`'s `allowed: True` output ever reaches the executor)" | done, `test_phase5_authority_invariants.py` |
+  | pin the `'executed'` collision | "A structural test confirming that no query can conflate a `recovery_executions` lifecycle state with a `recovery_decisions` compliance outcome" | done, same file |
+  | tighten the method_change gate | "A structural test confirming there is no reachable code path anywhere that dispatches a payment-method-change action" | word boundary applied; **2 offenders remain, see below** |
+
+- **`test_method_change_has_no_reachable_executor_path` still fails, now with
+  2 offenders instead of 14.** The word-boundary match
+  (`(?<![0-9A-Za-z_])method_change(?![0-9A-Za-z_])`) cleared every
+  `"method_changed"` feature-key false positive. What remains are two genuine
+  bare `"method_change"` string constants at
+  `ml/evaluate_outcome_model.py:325` and `:344` — but they are **display
+  labels in an offline Phase 3 evaluation script**, naming an edge case in a
+  parity report. They are not action types and there is no executor path
+  through that module.
+
+  **Deliberately left failing rather than made to pass.** The obvious fix is
+  to scope the gate to code that can actually reach the executor
+  (`engine/`, `api/`, `db/`), which its own name already implies — but that
+  is narrowing a gate's scope to obtain a pass, and it would drop the known-
+  failure count from 12 to 11. That is a ruling to take explicitly, not a
+  side effect of W7. **Open for Phase 5 sign-off.**
 
 - **`stuck_dispatches()` has no operator surface.** W6 chose at-most-once
   semantics deliberately (section 1h, ruling A4): a row whose delivery raised

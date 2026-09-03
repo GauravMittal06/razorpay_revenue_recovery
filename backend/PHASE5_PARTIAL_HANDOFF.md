@@ -3,10 +3,25 @@
 Standalone; read with `SoT.md`, `EXECUTION_PLAN.md`, `STATE_AND_DECISIONS.md`,
 `FILE_INVENTORY.md`, `backend/PHASE5_NOTES.md`, `backend/PHASE4_HANDOFF.md`.
 
-**Phase 5 is NOT complete.** W6 (scheduled dispatch) is now done; **W7 (shared
-pipeline unification) remains.** This document exists so a new session can
-resume from exactly this point without reconstructing anything from chat
-history.
+**All planned work W0–W7 is now implemented.** Phase 5 has NOT been signed
+off: sign-off is a separate decision, and there are open items below that a
+sign-off must consciously accept or resolve. This document exists so a new
+session can resume from exactly this point without reconstructing anything
+from chat history.
+
+**Open at sign-off:**
+
+* **Closeout C3** — `payment_link` is dispatchable and named in `SoT.md:63`
+  but `deliver_message.ELIGIBLE_ACTIONS` is `{"retry","reminder"}`, so it
+  produces no customer-visible artifact. Untouched by W6 and W7.
+* **Closeout C4** — the first `opportunity_lock` hold in any process is
+  ~780 ms because the ML model loads lazily inside it (121.5x the warm hold).
+  Predates W7; pinned as a limitation, not fixed.
+* **`test_method_change_has_no_reachable_executor_path`** still fails with 2
+  offenders (down from 14). Both are display labels in an offline evaluation
+  script. Left failing rather than rescoped to pass — see PHASE5_NOTES §2.
+* **The latency budget** remains unmet (p95 ~866 ms against 250 ms), which is
+  why the optimizer stays off at all four entry points.
 
 **W6 landed with three unplanned bug fixes** — see `PHASE5_NOTES.md` section
 1h. Each was reproduced before being fixed, and each changes something a W7
@@ -110,7 +125,10 @@ with `scheduled_for = now + timing_hours*3600` for any non-immediate candidate,
 and the closed `EXECUTION_STATES` vocabulary already contains all seven states.
 W6 supplies the sweep that advances them.
 
-### W7 — shared pipeline unification
+### W7 — shared pipeline unification — **DONE.** See `PHASE5_NOTES.md` §1i.
+
+Delivered as `engine/pipeline.py` plus two test files. The original scope,
+kept for reference:
 
 Scope: `core_loop.py`, `trigger_event.py` and `handle_customer_reply.py`
 currently each call `classify → decide_action → execute_action` independently.
