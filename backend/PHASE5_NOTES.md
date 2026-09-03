@@ -1,10 +1,37 @@
 # Phase 5 Notes — Rule Engine & Bounded Executor
 
-Working record, written as the phase proceeds. `PHASE5_HANDOFF.md` is a
-separate document produced at sign-off and draws on this one.
+**PHASE 5 IS COMPLETE. W0–W7 are all implemented and merged to `main`.**
+This is now the phase's permanent record rather than a working document.
 
 Read with `EXECUTION_PLAN.md`, `SoT.md`, `STATE_AND_DECISIONS.md`,
 `Phase_Acceptance_Test_Gates.md`, `backend/PHASE4_HANDOFF.md`.
+
+    W0/W1  baseline captured; 25-scenario golden decision corpus frozen
+    W2     phase5_config.py -- all bounds declared and dated before use
+    W3     decide_action() gains ranked_candidates; hardcoded path preserved
+    W4     runtime disable proven by a mid-run flag flip
+    W5     execution lifecycle, scheduled_for, candidate_id, payment_link
+    W6     engine/dispatch_scheduled.py -- the scheduled dispatch sweep
+    W7     engine/pipeline.py -- one shared pipeline for all three entry points
+
+    Unplanned but delivered: network health wired live (§1d-1f); closeout C1
+    re-implemented; two concurrency defects fixed; three further defects found
+    and fixed while planning W6 (§1h); the classify drift resolved in W7 (§1i).
+
+**Verification at close.** Full suite **12 failed / 396 passed / 1 skipped** —
+the same 12 known failures as the W0 baseline, by name, zero new at any point
+in the phase. `test_everything.py`: **69 checks, 64 matched, 5 disclosed, 0
+skipped, 0 unexpected**. The single skip is
+`test_the_first_lock_hold_is_inflated_by_the_lazy_model_load`, which skips
+with a printed reason when the ML model is already resident in the process.
+
+**Phase 5 closing does NOT close the closeout list.** C3, C4 and C5 in §1a
+remain open by explicit ruling and carry forward.
+
+> **Note on `PHASE5_HANDOFF.md`:** no such document was produced. Phase 5 ran
+> across several sessions and used `PHASE5_PARTIAL_HANDOFF.md` as the resume
+> point instead; that file was deleted at close, superseded by this one. If a
+> later phase expects a Phase 5 hand-off document, this file is it.
 
 ---
 
@@ -223,15 +250,22 @@ plausible, since nothing now rejects the string at write time.
 > leave by being absorbed into a "known failures" count and stopping being
 > counted.
 >
-> **Status as of 2026-09-04: two open items (C3, C4).** C1 fixed by
-> re-implementation, C2 withdrawn as a probe artefact, C3 opened by W6, C4
-> opened by W7. Resolved entries stay below with their evidence rather than
-> being deleted — a closeout list that erases its own history cannot be
-> audited. Add new items here as they are found.
+> **Status at Phase 5 close, 2026-09-04: three open items (C3, C4, C5).**
+> C1 fixed by re-implementation, C2 withdrawn as a probe artefact, C3 opened
+> by W6, C4 and C5 by W7. **All three open items are disclosed and
+> deliberately deferred, none is silently carried** — each names what would
+> close it and why it was not closed inside Phase 5. Resolved entries stay
+> below with their evidence rather than being deleted; a closeout list that
+> erases its own history cannot be audited.
+>
+> **These three carry forward into Phase 6 and must be resolved or formally
+> retired before the project is signed off — Phase 5 closing does not close
+> them.**
 
 | # | Item | Status | Ruled |
 |---|---|---|---|
 | C1 | `test_higher_true_incremental_value_ranks_above_lower` encoded the retracted methodology -- probability ground truth compared against rupee-space model output on constructed contexts. | **RESOLVED 2026-09-03 by re-implementation, not retirement.** Replaced by `tests/test_phase4_ranking_correctness.py`. Measured 0.8886 / 0.8966 at the locked floor and 0.9511 / 0.9489 at the G7 floor; both bars met at their own floors. Evidence below. | 2026-09-03 |
+| C5 | **`test_method_change_has_no_reachable_executor_path` fails with 2 offenders.** The W7 word-boundary fix cut false positives from 14 to 2. The survivors are genuine bare `"method_change"` string constants at `ml/evaluate_outcome_model.py:325` and `:344`, but both are **display labels in an offline Phase 3 evaluation script** — one names an edge case in a scoring-parity report, the other repeats it in that report's summary line. Neither is an action type, and **there is no executor path through that module**. | **OPEN by ruling 2026-09-04 — left failing, deliberately not rescoped to pass.** Scoping the gate to code that can reach the executor (`engine/`, `api/`, `db/`) would clear both, but that narrows a gate to obtain a pass and would drop the known-failure count from 12 to 11 as a side effect. Remains one of the 12 known failures. Note the test proves little either way: no `method_change` action type exists in this system, so the token it searches for structurally cannot appear. The boundary is verified for real by `tests/test_phase5_fallthrough.py`, by `phase5_config.METHOD_CHANGE_IS_EXECUTABLE`'s import-time raise, and by `test_the_dispatcher_cannot_fire_a_method_change`. | 2026-09-04 |
 | C4 | **The first `opportunity_lock` hold in any process is ~780 ms, not ~6 ms.** `decide_action()` loads the ML model lazily (`_load_ml_model()`), and the first call in a process happens inside `decide_action()` — which the pipeline calls INSIDE the lock. So the very first hold after a restart includes a `joblib.load`. Measured from a cold process, 8 consecutive opportunities: hold #1 **779.35 ms**, then 9.75 / 6.23 / 6.00 / 7.23 / 6.46 / 5.89 / 6.41 ms — a **121.5x** spike, and the warm figures match the 5.88 ms p50 recorded in `opportunity_lock.py`. Against `db.BUSY_TIMEOUT_MS = 5000` this puts the first cycle after any restart in the same regime the optimizer was banned from the lock for: roughly the seventh concurrent worker fails with "database is locked". | **OPEN — found while measuring W7's lock hold, deliberately not fixed in W7.** Not introduced by W7: the pre-W7 sequence shows it too (p95 946 ms on the same machine before the model warms). The fix belongs to the compliance authority's loading strategy — warming the model before the lock is entered, or at import — and changing when a frozen-adjacent module loads its artifact needs its own ruling. Pinned as a documented limitation by `test_the_first_lock_hold_is_inflated_by_the_lazy_model_load`, which asserts the limitation rather than a guarantee, and skips with a printed reason when the model is already resident. | 2026-09-04 |
 | C3 | `payment_link` is dispatchable but has no delivery path. `SoT.md:63` names it among the tools the rule engine dispatches; `phase5_config.EXECUTABLE_ACTIONS` includes it; `decide_action.CONTACT_ACTIONS` treats it as customer contact and applies the contact-hours window to it. But `deliver_message.ELIGIBLE_ACTIONS` is `{"retry", "reminder"}`, so a dispatched `payment_link` writes **no `messages` row and produces no customer-visible artifact at all**. | **OPEN — found while planning W6 (ruling A8, 2026-09-03), deliberately not fixed in W6.** Fixing it means deciding what a payment-link message *is* (it must carry a link this system does not mint), which is a product question, not a dispatch question. W6 neither widened nor narrowed the gap; its idempotency proof deliberately uses `reminder` because `payment_link` would report zero customer-visible actions whether or not the dispatcher worked. | 2026-09-03 |
 

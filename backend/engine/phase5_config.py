@@ -150,6 +150,21 @@ CLASSIFY_ROOT_CAUSE_FALLBACK = "latest_payment.error_reason"
 # ~650 ms failure it must catch. A 10 ms bar would flake without detecting
 # anything this one misses. The raw p50/p95 are reported by the measurement
 # regardless of the bar.
+#
+# CORRECTION 2026-09-04, after the measurement ran. The "~8x above the
+# recorded p95" derivation above compared against a BARE-PROCESS figure
+# (5.88 / 6.24 ms) while the test that checks this ceiling runs inside a
+# loaded pytest session, where the same warm hold measures 24-32 ms. Measured
+# in-suite: legacy p95 31.79 ms, optimizer-off p95 30.57 ms, optimizer-on p95
+# 25.92 ms. So the real margin against a false failure is about 1.6x, NOT 8x.
+#
+# The value is deliberately NOT changed. Moving it now -- in either direction
+# -- would be adjusting a bound after seeing the results it governs, which is
+# exactly what the standing rules forbid. It still detects the regression it
+# exists for by ~25x (a ~650-800 ms hold against a 50 ms bar). What is no
+# longer true is the claim of comfortable headroom against flake: if this
+# ever fails on a slow run, the correct response is a dated amendment with a
+# diagnosed reason, not a quiet bump.
 UNIFIED_LOCK_HOLD_P95_CEILING_MS = 50.0
 
 # Fields excluded from the before/after parity comparison, declared BEFORE
