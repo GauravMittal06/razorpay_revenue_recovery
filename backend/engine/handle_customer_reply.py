@@ -108,7 +108,10 @@ def handle_customer_reply(opportunity_id: str, customer_message: str, conn) -> d
         # Outside the lock: an outbound side effect on an already-committed
         # decision, and it calls the LLM, which must not be held under a write
         # lock.
-        deliver_recovery_message(opportunity, classification, decision, conn, latest_payment=latest_payment)
+        # decision_id names the execution this delivery belongs to (ruling A7).
+        deliver_recovery_message(opportunity, classification, decision, conn,
+                                 latest_payment=latest_payment,
+                                 decision_id=result["decision_id"])
     except Exception as e:
         return {
             "opportunity_id": opportunity_id,

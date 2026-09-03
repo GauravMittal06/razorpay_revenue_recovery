@@ -69,6 +69,40 @@ def _get_history(opportunity_id: str, conn):
     return [dict(r) for r in rows]
 
 
+def _undelivered_decision_ids(opportunity_id: str, conn) -> set:
+    """
+    Decisions whose execution row positively says the contact has NOT reached
+    the customer. Amendment A1, dated 2026-09-03.
+
+    execute_action() writes an outcome='executed' decision at SCHEDULE time,
+    before anything is sent, so without this a scheduled action counts as a
+    contact already made and blocks its own dispatch on cooldown (measured:
+    "Cooldown active. 20.0h remaining" on a 4h-scheduled reminder) and burns
+    an attempt against the MAX_RETRIES ceiling.
+
+    Phrased as an exclusion on purpose. A decision counts as contact unless
+    its execution row exists AND names a not-yet-delivered state, so a
+    decision with no execution row -- every row in the pre-Phase-5 golden
+    corpus -- keeps counting exactly as it did. Absence of evidence is treated
+    as contact made, the safe direction for a compliance rule.
+
+    This adds no new rule and moves no threshold. Cooldown is still 24h and
+    the ceiling is still 3; only the question "has this contact happened" is
+    answered from the execution lifecycle, which is the table that owns it.
+    """
+    placeholders = ",".join("?" * len(_phase5.CONTACT_NOT_YET_DELIVERED_STATES))
+    rows = conn.execute(
+        f"""
+        SELECT e.decision_id
+        FROM recovery_executions e
+        JOIN recovery_decisions d ON d.decision_id = e.decision_id
+        WHERE d.opportunity_id = ? AND e.state IN ({placeholders})
+        """,
+        (opportunity_id, *_phase5.CONTACT_NOT_YET_DELIVERED_STATES),
+    ).fetchall()
+    return {r["decision_id"] for r in rows}
+
+
 def _has_customer_reply(opportunity_id: str, conn) -> bool:
     row = conn.execute(
         "SELECT COUNT(*) as c FROM messages WHERE opportunity_id = ? AND sender = 'customer'",
@@ -262,7 +296,8 @@ def _candidate_block_reason(candidate: dict, current_method, created_at):
 
 
 def _decide_action_from_ranked(opportunity, classification, conn,
-                               ranked_candidates, baseline, latest_payment):
+                               ranked_candidates, baseline, latest_payment,
+                               as_of=None):
     """
     Walk the optimizer's ranked list and select the first executable
     candidate, given a baseline verdict that has already cleared every
@@ -277,7 +312,10 @@ def _decide_action_from_ranked(opportunity, classification, conn,
     tests/test_phase5_fallthrough.py.
     """
     opportunity_id = opportunity["opportunity_id"]
-    created_at = opportunity["created_at"]
+    # Amendment A2, 2026-09-03: the clock the contact window is judged
+    # against. `created_at` when no caller supplied one, which is what the
+    # hardcoded path uses and what the golden corpus pins.
+    created_at = opportunity["created_at"] if as_of is None else as_of
     current_method = (latest_payment or {}).get("method")
 
     if len(ranked_candidates) > MAX_FALLTHROUGH_CANDIDATES:
@@ -365,7 +403,8 @@ def decide_action(opportunity: dict, classification: dict, conn,
                    intent_confidence: float = None,
                    mentioned_reason: str = None,
                    dispute_flag: bool = False,
-                   ranked_candidates: list = None) -> dict:
+                   ranked_candidates: list = None,
+                   as_of: int = None) -> dict:
     """
     Returns:
     {
@@ -426,6 +465,7 @@ def decide_action(opportunity: dict, classification: dict, conn,
             mentioned_reason=mentioned_reason,
             dispute_flag=dispute_flag,
             ranked_candidates=None,
+            as_of=as_of,
         )
         # Almost every blocking rule is opportunity-scoped -- cooldown,
         # attempt ceiling, already stopped/escalated, confidence and mismatch
@@ -449,16 +489,22 @@ def decide_action(opportunity: dict, classification: dict, conn,
             return baseline
         return _decide_action_from_ranked(
             opportunity, classification, conn,
-            ranked_candidates, baseline, latest_payment)
+            ranked_candidates, baseline, latest_payment, as_of)
 
     opportunity_id = opportunity["opportunity_id"]
     event_type = opportunity["event_type"]
     now = int(time.time())
 
     history = _get_history(opportunity_id, conn)
+    # Amendment A1, 2026-09-03: a decision that was approved but whose
+    # execution is still queued (or was cancelled) is not a contact. See
+    # _undelivered_decision_ids(). Empty for every pre-Phase-5 opportunity,
+    # which is why the golden corpus reproduces unchanged.
+    undelivered = _undelivered_decision_ids(opportunity_id, conn)
     contact_history = [
         h for h in history
         if h["action_type"] in ("retry", "reminder") and h["outcome"] == "executed"
+        and h["decision_id"] not in undelivered
     ]
     contact_count = len(contact_history)
     last_contact_ts = contact_history[-1]["timestamp"] if contact_history else None
@@ -587,7 +633,13 @@ def decide_action(opportunity: dict, classification: dict, conn,
     # clock (created_at), not the real system clock. escalate is
     # internal routing, not customer contact, so it bypasses this check.
     if default_action in ("retry", "reminder"):
-        simulated_hour = datetime.fromtimestamp(opportunity["created_at"]).hour
+        # Amendment A2, 2026-09-03: evaluated against `as_of` when the caller
+        # supplies one -- the dispatcher passes the moment the action would
+        # actually fire, so a 3-day-scheduled action is checked against 3am,
+        # not against the noon it was created at. With as_of None this is
+        # `created_at`, byte-for-byte the pre-amendment expression.
+        simulated_hour = datetime.fromtimestamp(
+            opportunity["created_at"] if as_of is None else as_of).hour
         if not (CONTACT_WINDOW_START <= simulated_hour < CONTACT_WINDOW_END):
             return {
                 "action_type": default_action,

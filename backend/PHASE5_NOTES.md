@@ -223,14 +223,16 @@ plausible, since nothing now rejects the string at write time.
 > leave by being absorbed into a "known failures" count and stopping being
 > counted.
 >
-> **Status as of 2026-09-03: no open items.** C1 fixed by re-implementation,
-> C2 withdrawn as a probe artefact. Both entries stay below with their
+> **Status as of 2026-09-04: one open item (C3).** C1 fixed by
+> re-implementation, C2 withdrawn as a probe artefact, C3 opened by W6 and
+> deliberately not fixed in it. Resolved entries stay below with their
 > evidence rather than being deleted — a closeout list that erases its own
 > history cannot be audited. Add new items here as they are found.
 
 | # | Item | Status | Ruled |
 |---|---|---|---|
 | C1 | `test_higher_true_incremental_value_ranks_above_lower` encoded the retracted methodology -- probability ground truth compared against rupee-space model output on constructed contexts. | **RESOLVED 2026-09-03 by re-implementation, not retirement.** Replaced by `tests/test_phase4_ranking_correctness.py`. Measured 0.8886 / 0.8966 at the locked floor and 0.9511 / 0.9489 at the G7 floor; both bars met at their own floors. Evidence below. | 2026-09-03 |
+| C3 | `payment_link` is dispatchable but has no delivery path. `SoT.md:63` names it among the tools the rule engine dispatches; `phase5_config.EXECUTABLE_ACTIONS` includes it; `decide_action.CONTACT_ACTIONS` treats it as customer contact and applies the contact-hours window to it. But `deliver_message.ELIGIBLE_ACTIONS` is `{"retry", "reminder"}`, so a dispatched `payment_link` writes **no `messages` row and produces no customer-visible artifact at all**. | **OPEN — found while planning W6 (ruling A8, 2026-09-03), deliberately not fixed in W6.** Fixing it means deciding what a payment-link message *is* (it must carry a link this system does not mint), which is a product question, not a dispatch question. W6 neither widened nor narrowed the gap; its idempotency proof deliberately uses `reminder` because `payment_link` would report zero customer-visible actions whether or not the dispatcher worked. | 2026-09-03 |
 
 ### C1 detail — ranking correctness, re-implemented
 
@@ -703,6 +705,182 @@ directions.
 
 ---
 
+## 1h. W6 — scheduled dispatch, and the three defects found while planning it
+
+`engine/dispatch_scheduled.py` is new. Reviewing W5's write side against what
+a dispatcher would actually have to do surfaced three defects that had to be
+fixed before the sweep could be correct at all. Each was reproduced *before*
+being fixed, and the pre-fix output is recorded here rather than described.
+
+### A1 — cooldown counted decisions, not contacts
+
+`execute_action()` writes `recovery_decisions(action_type='reminder',
+outcome='executed')` at **schedule** time, before anything is sent.
+`decide_action()` built `contact_history` from exactly that predicate, so a
+scheduled-but-unfired action counted as a contact already made.
+
+Reproduced before the fix, a 4h-scheduled reminder revalidated at its due
+time:
+
+    Cooldown active. 20.0h remaining before next contact allowed.
+
+The scheduling decision blocking the very action it scheduled — which makes
+the `4h` timing **structurally undispatchable**. Through the same counter,
+three unfired scheduled reminders returned:
+
+    Max 3 contact attempts reached. Stopping further automated contact.
+
+so the customer's entire contact budget was consumed before any contact
+happened.
+
+**The fix** (`_undelivered_decision_ids()`) is phrased as an *exclusion*, and
+that phrasing is the whole design. The obvious formulation — count only
+decisions whose execution reached `'executed'` — silently breaks every
+pre-Phase-5 row, because the golden corpus inserts decision rows with **no
+execution row at all** and all 25 scenarios would stop counting as contact.
+So a decision counts as contact **unless** its execution row exists and names
+a state in `phase5_config.CONTACT_NOT_YET_DELIVERED_STATES`. Absence of
+evidence is treated as contact made, the safe direction for a compliance rule.
+
+No threshold moved: cooldown is still 24h and the ceiling is still 3. Only the
+question "has this contact happened" is now answered from the table that owns
+it.
+
+**An honest limit on the backward-compatibility proof.** The golden corpus
+reproduces at 0 differing fields, which is what the ruling required — but the
+corpus **cannot detect this class of change in either direction**. Running the
+inverted predicate as a negative control, the corpus still passed 5/5 while
+four directional tests failed, because no corpus scenario carries an execution
+row. Corpus identity therefore proves the amendment *disturbs nothing
+pre-existing*; it does **not** prove the amendment is correct. The correctness
+evidence is `tests/test_phase5_revalidation.py`, which the same negative
+control shows is sensitive in both directions — it catches both "stopped
+counting a real contact" and "started counting an unfired one".
+
+### A2 — the contact window could not be revalidated at all
+
+`phase5_config.DISPATCH_REVALIDATES_VIA_DECIDE_ACTION` was declared at W2 to
+stop a 3-day-scheduled action firing at 3am. It did not do that. Both window
+implementations — `_within_contact_window()` and the hardcoded branch — read
+the local hour of the opportunity's `created_at`, which does not change
+between schedule time and due time, so revalidating returned the **identical**
+verdict it gave at scheduling. The 9pm–8am contact ban was unenforceable for
+every scheduled action.
+
+**The fix** is an `as_of` evaluation clock on `decide_action()`. With `as_of`
+None the expression is byte-for-byte the pre-amendment one, which is what the
+corpus pins; the dispatcher passes the moment the action would actually fire.
+The W2 comment claiming the flag already closed this has been corrected in
+place rather than quietly reinterpreted.
+
+This one bit immediately and usefully: the first full run of
+`tests/test_phase5_dispatch.py` happened at 23:00 local and **every**
+scheduling test failed, because every due action was correctly cancelled as
+`blocked_contact_hours`. The tests were wall-clock-dependent, not the code.
+They now pin `now` through a `now_in_window()` helper — the `now` counterpart
+of the suite's existing `recent_in_window_ts()`.
+
+### A7 — the customer was contacted at schedule time
+
+`deliver_recovery_message()` gated only on `outcome == 'executed'` and the
+action type. But `outcome` is a **compliance** verdict — it says the action
+was permitted, and it is written the moment the action is approved — while
+whether the action has fired lives in `recovery_executions.state`. For a
+scheduled action the two disagree for the whole scheduling window.
+
+Measured before the fix:
+
+    execution state      : scheduled
+    executed_at          : None
+    scheduled_for        : +4h from now
+    delivery result      : delivered=True status=ok
+    agent messages sent  : 1     <-- while the execution is 'scheduled'
+
+and the dispatcher would have sent a second at due time. After:
+
+    agent messages sent  : 0
+
+Reading a lifecycle answer out of the compliance field is exactly the
+conflation the "Execution separation" gate and the five-distinct-concepts
+invariant forbid, so this is a correctness fix, not a feature. Delivery now
+requires the execution to be in `DELIVERABLE_STATES = ('dispatched',
+'executed')` and **fails closed** when the caller cannot name the execution:
+a missed message is visible in the returned status and costs one delayed
+follow-up, while a duplicate contact is not recoverable. All three production
+entry points now pass `decision_id`, pinned structurally so W7's unification
+cannot drop it.
+
+### The dispatcher itself
+
+Selection is `state='scheduled' AND scheduled_for <= now`, ordered
+deterministically. Advancement is **only** compare-and-swap `UPDATE`s:
+
+    UPDATE recovery_executions SET state = ?
+    WHERE execution_id = ? AND state = ?
+
+`rowcount == 1` means this sweep won the row; `0` means another sweep already
+took it, and this one then does nothing at all. `execute_action()` is never
+called and nothing is ever INSERTed — enforced by a static test, not by
+convention, because that is the property the whole idempotency gate rests on.
+
+The optimizer is not called anywhere in the module, so the ~650ms ranking call
+can never land inside `opportunity_lock`'s ~6ms hold. The action was ranked
+and authorised at schedule time; re-ranking at dispatch would be re-deciding.
+`OPTIMIZER_ENABLED_BY_ENTRY_POINT["dispatch"]` is therefore inert by design
+(ruling A9).
+
+**Idempotency evidence.** Sequential double sweep — decisions 1→1→1,
+executions 1→1→1, 1 agent message after two sweeps. Barrier-forced concurrent
+sweeps, 25 trials × 2 workers on one due row — exactly 1 dispatch and 1
+message in every trial (25 and 25 in total). Negative control with the CAS
+predicate removed — **2 messages**, so the tests demonstrably detect the
+failure they claim to prevent. The barrier test is the one that establishes
+the property; this project has already recorded that a green concurrency test
+is weak evidence by construction.
+
+### A4 — the stuck-row question, answered explicitly
+
+The sweep selects only `'scheduled'`, so a row left in `'dispatched'` is never
+retried. Two ways to get there:
+
+* **the process dies** between the claim and the completion;
+* **`deliver_recovery_message()` raises** — an LLM failure, a persistence
+  failure. The row is left in `'dispatched'` with `executed_at` NULL and the
+  exception is returned in the result's `reason`, not swallowed.
+
+**This is at-most-once by choice, and it is intentional for W6.** A claimed
+row may already have reached the customer, so an automatic retry is precisely
+the duplicate contact the CAS exists to prevent. Failing to send is
+recoverable by a human; sending twice is not. `stuck_dispatches()` enumerates
+these rows for exactly that review.
+
+**What is *not* covered, and is a tracked follow-up rather than a silent
+gap:** there is no alerting, no dashboard surface and no operator workflow
+around `stuck_dispatches()` — it is a function nobody currently calls. A row
+can sit stuck indefinitely with nothing drawing attention to it. That is
+acceptable for W6, whose job is that the dispatcher be *correct*, and it is
+recorded in section 2 below so it does not disappear.
+
+### A6 — where an abandonment reason is recorded
+
+Ruling A6 offered two options and approved "as proposed"; the durable one was
+taken. `recovery_executions.state_reason` (nullable TEXT) records why the
+dispatcher abandoned a queued action, because "every action the system takes
+**or declines to take** is logged with a reason" and a return value that
+vanishes with the process does not satisfy that.
+
+It is deliberately **free text and never a `DECISION_OUTCOMES` token** —
+putting a compliance-vocabulary value in the lifecycle table is the exact
+conflation the Execution-separation gate forbids. A test asserts the column
+never holds a bare compliance token.
+
+Since `CREATE TABLE IF NOT EXISTS` leaves an existing table alone, a new column
+would never reach a database file that predates it. `db.ADDITIVE_COLUMNS` plus
+`_apply_additive_columns()` applies it idempotently. This is a deliberately
+small mechanism, not a migration framework.
+
+---
+
 ## 2. Open obligations carried into later steps
 
 - **Tighten `test_method_change_has_no_reachable_executor_path`.** It
@@ -732,4 +910,44 @@ directions.
 - **Latency.** p95 measured at 747.9 / 737.5 / 724.3 ms across three runs
   against the declared 250 ms budget (`optimizer_config.LATENCY_BUDGET_MS`).
   Not met, unchanged from Phase 4, and no Phase 5 budget was invented to
-  replace it.
+  replace it. Re-measured after W6: p50 753.3 ms / p95 859.1 ms. Unchanged in
+  substance; W6 adds no scoring call.
+
+### Added by W6 (2026-09-04)
+
+- **"W8" is referenced in this section but is not a planned step.** Three
+  obligations above defer work to "W8" — tightening
+  `test_method_change_has_no_reachable_executor_path`, the structural tests
+  that pin the `'executed'` vocabulary collision, and making the
+  `allowed`-vs-`outcome` proxy mechanical. But `PHASE5_PARTIAL_HANDOFF.md` and
+  `EXECUTION_PLAN.md` both scope Phase 5 as W0–W7, with no W8. Either those
+  three items belong inside W7 or W8 must be declared as its own step.
+  **Not a W6 blocker; must be resolved before Phase 5 sign-off** (ruling A10)
+  so the work does not quietly disappear between the two documents.
+
+- **`stuck_dispatches()` has no operator surface.** W6 chose at-most-once
+  semantics deliberately (section 1h, ruling A4): a row whose delivery raised
+  is left in `'dispatched'` and never retried, because a claimed row may
+  already have reached the customer. The function that enumerates those rows
+  exists but nothing calls it — no alert, no dashboard, no workflow. A row can
+  sit stuck indefinitely with nothing drawing attention to it. The *safety*
+  property is complete; the *operability* one is not.
+
+- **`retry_only_count`, `last_action_type` and `hours_since_last_action` still
+  count unfired scheduled actions.** Amendment A1 was ruled for cooldown and
+  the attempt ceiling, and was implemented to exactly that scope — those three
+  are ML features, not compliance inputs, and still read the unfiltered
+  history. So the model can be told a retry happened when it has only been
+  queued. Arguably the same defect one layer over, and arguably against the
+  project's "never invent an input" rule; deliberately **not** silently
+  extended beyond the ruling, because changing model inputs is a scoring
+  change and needs its own decision. Flagged for a ruling, not fixed.
+
+- **`opportunities.status` is set at schedule time.** `execute_action()` moves
+  the opportunity to `recovering` when it *queues* an action, not when the
+  action fires, and the dispatcher does not walk that back when it cancels one
+  (ruling A11, approved as a note). Confirmed non-stranding: `core_loop.py:32`
+  selects `status IN ('open','recovering')`, so a cancelled-dispatch
+  opportunity is re-picked on the next batch cycle. Recorded because "status
+  says recovering" and "an action is pending" are not the same claim, and a
+  future reader may assume they are.

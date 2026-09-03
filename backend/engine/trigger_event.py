@@ -219,7 +219,10 @@ def trigger_event(event_type: str, amount: int, conn,
     classification = classify(event_type, root_cause)
     decision = decide_action(opportunity, classification, conn, latest_payment=payment)
     result = execute_action(opportunity, decision, conn)
-    delivery = deliver_recovery_message(opportunity, classification, decision, conn, latest_payment=payment)
+    # decision_id names the execution this delivery belongs to (ruling A7).
+    delivery = deliver_recovery_message(opportunity, classification, decision, conn,
+                                        latest_payment=payment,
+                                        decision_id=result["decision_id"])
 
     return {
         "status": "ok",

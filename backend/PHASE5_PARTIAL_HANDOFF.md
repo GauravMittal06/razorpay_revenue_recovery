@@ -3,9 +3,26 @@
 Standalone; read with `SoT.md`, `EXECUTION_PLAN.md`, `STATE_AND_DECISIONS.md`,
 `FILE_INVENTORY.md`, `backend/PHASE5_NOTES.md`, `backend/PHASE4_HANDOFF.md`.
 
-**Phase 5 is NOT complete.** W6 (scheduled dispatch) and W7 (shared pipeline
-unification) remain. This document exists so a new session can resume from
-exactly this point without reconstructing anything from chat history.
+**Phase 5 is NOT complete.** W6 (scheduled dispatch) is now done; **W7 (shared
+pipeline unification) remains.** This document exists so a new session can
+resume from exactly this point without reconstructing anything from chat
+history.
+
+**W6 landed with three unplanned bug fixes** — see `PHASE5_NOTES.md` section
+1h. Each was reproduced before being fixed, and each changes something a W7
+author must know:
+
+* **cooldown now counts delivered contacts, not approved decisions.** A
+  scheduled action no longer blocks its own dispatch (measured before: a
+  4h-scheduled reminder returned `Cooldown active. 20.0h remaining`).
+* **`decide_action()` takes an `as_of` evaluation clock.** With it omitted the
+  behaviour is byte-for-byte unchanged, which the golden corpus pins. The
+  dispatcher passes the moment the action would fire, because the contact
+  window reads `created_at` and could not otherwise be revalidated at all.
+* **`deliver_recovery_message()` is gated on execution state and takes
+  `decision_id`.** It **fails closed** without one. All three entry points
+  pass it, pinned by a structural test — **W7's unified pipeline must keep
+  passing it, or the system goes silent rather than double-contacting.**
 
 `PHASE5_NOTES.md` holds the full detail of everything summarised here. This
 document points at it rather than duplicating it.
@@ -74,7 +91,10 @@ rather than being deleted.
 
 ## 3. What is NOT done
 
-### W6 — scheduled dispatch (`engine/dispatch_scheduled.py`, new)
+### W6 — scheduled dispatch — **DONE.** See `PHASE5_NOTES.md` section 1h.
+
+Delivered as `engine/dispatch_scheduled.py` plus three test files. The
+original scope, kept here for reference:
 
 Scope, from `EXECUTION_PLAN.md` Phase 5: a periodic sweep, *structurally
 identical in pattern to the existing batch loop*, and **the only component

@@ -212,6 +212,17 @@ CREATE TABLE IF NOT EXISTS recovery_executions (
     scheduled_for INTEGER,
     executed_at INTEGER,
     channel TEXT,
+    -- Phase 5 / W6, ruling A6. Free text saying WHY this row reached its
+    -- current lifecycle state -- specifically why the dispatcher abandoned a
+    -- scheduled action instead of firing it. The permanent invariant is that
+    -- every action the system takes OR DECLINES TO TAKE is logged with a
+    -- reason, and a cancelled dispatch is a declining.
+    --
+    -- Deliberately free text and never a DECISION_OUTCOMES token: putting a
+    -- compliance-vocabulary value in this table is exactly the conflation the
+    -- "Execution separation" gate forbids. The compliance verdict stays in
+    -- recovery_decisions; this only records the lifecycle consequence.
+    state_reason TEXT,
     FOREIGN KEY (decision_id) REFERENCES recovery_decisions(decision_id)
 );
 
@@ -307,8 +318,35 @@ def get_connection():
     return conn
 
 
+# Columns added to an existing table after it was first shipped. CREATE TABLE
+# IF NOT EXISTS silently leaves an already-created table alone, so a new column
+# never reaches a database file that predates it -- the code would then fail
+# against exactly the long-lived databases that matter most.
+#
+# Kept as an explicit, ordered list rather than a general migration framework:
+# there are two structural additions in the project's history and inventing a
+# migration engine for them would be more machinery than the problem needs.
+# Each entry is (table, column, DDL fragment) and is applied only when absent,
+# so running it repeatedly is a no-op.
+ADDITIVE_COLUMNS = (
+    # Phase 5 / W6, ruling A6, 2026-09-03.
+    ("recovery_executions", "state_reason", "TEXT"),
+)
+
+
+def _apply_additive_columns(conn):
+    for table, column, ddl in ADDITIVE_COLUMNS:
+        existing = {r["name"] for r in
+                    conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        if not existing:
+            continue          # table not created yet; SCHEMA will include it
+        if column not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+
+
 def create_schema(conn):
     conn.executescript(SCHEMA)
+    _apply_additive_columns(conn)
     conn.commit()
 
 

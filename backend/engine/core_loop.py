@@ -49,7 +49,12 @@ def run_cycle():
         # Message delivery is outside the lock deliberately: it is an outbound
         # side effect on an already-committed decision, and holding the write
         # lock across it would serialise the whole batch on message generation.
-        deliver_recovery_message(opportunity, classification, decision, conn, latest_payment=latest_payment)
+        # decision_id names the execution this delivery belongs to, so a
+        # scheduled action is not announced to the customer before it fires
+        # (ruling A7). Without it delivery fails closed rather than guessing.
+        deliver_recovery_message(opportunity, classification, decision, conn,
+                                 latest_payment=latest_payment,
+                                 decision_id=result["decision_id"])
         results.append(result)
 
     conn.close()

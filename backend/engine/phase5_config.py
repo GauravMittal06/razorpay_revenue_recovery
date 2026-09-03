@@ -224,6 +224,37 @@ MAX_SCHEDULE_HORIZON_HOURS = 72.0
 # permitted window.
 DISPATCH_DUE_GRACE_SECONDS = 0
 
+# Execution states that positively mean "this contact has NOT reached the
+# customer". Ruling A1, 2026-09-03.
+#
+# THE DEFECT. execute_action() writes recovery_decisions(action_type=
+# 'reminder', outcome='executed') at SCHEDULE time, before anything is sent.
+# decide_action() built contact_history from exactly that predicate, so a
+# scheduled-but-unfired action counted as contact already made. Measured: a
+# 4h-scheduled reminder revalidated at its due time returned
+#
+#     Cooldown active. 20.0h remaining before next contact allowed.
+#
+# -- the scheduling decision blocking the very action it scheduled, making the
+# 4h timing structurally undispatchable. Through the same counter, three
+# unfired scheduled reminders returned "Max 3 contact attempts reached",
+# exhausting the customer's whole contact budget before any contact happened.
+#
+# WHY THIS IS PHRASED AS AN EXCLUSION, NOT AN INCLUSION. The obvious fix --
+# count only decisions whose execution reached 'executed' -- silently breaks
+# every pre-Phase-5 row: the golden corpus inserts decision rows with no
+# execution row at all, and all 25 scenarios would stop counting as contact,
+# weakening cooldown across the board. So a decision counts as contact UNLESS
+# its execution row exists and is in one of these states. Absence of evidence
+# is treated as contact made, which is the safe direction for a compliance
+# rule.
+#
+# 'failed' and 'dispatched' are deliberately NOT here. A dispatch that was
+# attempted may have reached the customer; counting it costs at most one
+# delayed follow-up, while not counting it risks a real double-contact.
+CONTACT_NOT_YET_DELIVERED_STATES = ("pending", "scheduled", "cancelled",
+                                    "superseded")
+
 # Re-validate compliance at dispatch time by calling back into
 # decide_action(), never by re-implementing the checks in the dispatcher.
 #
@@ -233,7 +264,32 @@ DISPATCH_DUE_GRACE_SECONDS = 0
 # callback specifically to avoid creating a second compliance authority --
 # the dispatcher decides *when* an approved action fires, never *whether* it
 # may (EXECUTION_PLAN.md:83).
+#
+# CORRECTION, ruling A2, 2026-09-03. As originally written this flag did not
+# achieve what the paragraph above claims. Both window implementations
+# (_within_contact_window and the hardcoded branch) read the local hour of
+# `created_at`, which does not change between schedule time and due time -- so
+# revalidating returned the *identical* window verdict and the 9pm-8am contact
+# ban was unenforceable for every scheduled action. Closing it required giving
+# decide_action() an evaluation clock; see DISPATCH_EVALUATES_WINDOW_AT_DUE_
+# TIME below. The flag's original intent stands; its stated mechanism was
+# wrong, and is corrected here rather than quietly reinterpreted.
 DISPATCH_REVALIDATES_VIA_DECIDE_ACTION = True
+
+# The dispatcher passes its own clock to decide_action(as_of=...) so the
+# contact window is evaluated at the moment the action would actually fire.
+# Ruling A2, 2026-09-03.
+#
+# Without this, an action scheduled at noon for 3 days out revalidates against
+# noon and fires at 3am. That is a real violation of SoT section 7's 9am-8pm
+# rule, in the same severity tier as the two concurrency defects fixed earlier
+# in this phase -- not a theoretical one, because W6 is the component that
+# makes scheduled firing reachable at all.
+#
+# `as_of` defaults to None everywhere else, and with it None decide_action()
+# reads `created_at` exactly as before. That default path is what the golden
+# corpus pins, so the amendment cannot change any pre-Phase-5 verdict.
+DISPATCH_EVALUATES_WINDOW_AT_DUE_TIME = True
 
 
 # --------------------------------------------------------------------------
@@ -357,6 +413,17 @@ def _check() -> None:
 
     if MAX_SCHEDULE_HORIZON_HOURS <= IMMEDIATE_TIMING_HOURS:
         raise ValueError("scheduling horizon must exceed the immediate timing")
+
+    from backend.db.db import EXECUTION_STATES
+    unknown = set(CONTACT_NOT_YET_DELIVERED_STATES) - set(EXECUTION_STATES)
+    if unknown:
+        raise ValueError(
+            f"CONTACT_NOT_YET_DELIVERED_STATES names states outside the closed "
+            f"execution vocabulary: {sorted(unknown)}")
+    if "executed" in CONTACT_NOT_YET_DELIVERED_STATES:
+        raise ValueError(
+            "'executed' means the contact reached the customer; excluding it "
+            "from contact history would disable cooldown entirely")
 
     if DISPATCH_DUE_GRACE_SECONDS != 0:
         raise ValueError(
