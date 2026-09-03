@@ -217,9 +217,16 @@ plausible, since nothing now rejects the string at write time.
 > and hand-off document.** It is not a Phase 5 to-do list. Items here are
 > deferred by explicit ruling, not forgotten, and each one must be either
 > resolved or formally retired with a recorded reason before the project is
-> signed off. An item may leave this list in exactly two ways: it is fixed, or
-> a ruling retires it and the reason is written down here. It may never leave
-> by being absorbed into a "known failures" count and stopping being counted.
+> signed off. An item may leave this list in exactly three ways: it is fixed,
+> a ruling retires it and the reason is written down here, or the finding
+> itself is withdrawn as erroneous with the diagnosis recorded. It may never
+> leave by being absorbed into a "known failures" count and stopping being
+> counted.
+>
+> **Status as of 2026-09-03: no open items.** C1 fixed by re-implementation,
+> C2 withdrawn as a probe artefact. Both entries stay below with their
+> evidence rather than being deleted — a closeout list that erases its own
+> history cannot be audited. Add new items here as they are found.
 
 | # | Item | Status | Ruled |
 |---|---|---|---|
