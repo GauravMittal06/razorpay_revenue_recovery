@@ -279,10 +279,31 @@ CREATE TABLE IF NOT EXISTS dataset_registry (
 """
 
 
+# How long a writer waits for a competing writer's lock before giving up.
+#
+# Without this, SQLite's default is zero: a second concurrent writer fails
+# instantly with "database is locked". That turns the per-opportunity
+# serialisation in engine/opportunity_lock.py from "the second worker waits its
+# turn and then correctly observes cooldown" into "the second worker crashes",
+# which is a worse failure than the double-contact it exists to prevent.
+#
+# 5s is chosen against the measured cost of the work actually serialised: one
+# opportunity's decide_action + execute_action, p50 5.88ms / p95 6.24ms. That
+# leaves room for ~850 workers to queue before a waiter exceeds the timeout,
+# so contention is invisible at any realistic concurrency while still failing
+# loudly rather than hanging if something genuinely deadlocks.
+#
+# That headroom depends on the optimizer staying OUTSIDE the lock: ranking
+# costs ~644ms p50, which would cut the safe queue depth to about 7. See the
+# "WHAT MUST NEVER GO INSIDE THIS LOCK" section of engine/opportunity_lock.py.
+BUSY_TIMEOUT_MS = 5000
+
+
 def get_connection():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
     return conn
 
 

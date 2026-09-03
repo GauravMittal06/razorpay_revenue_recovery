@@ -13,6 +13,7 @@ from backend.db.db import get_connection
 from backend.engine.classify import classify
 from backend.engine.decide_action import decide_action
 from backend.engine.execute_action import execute_action
+from backend.engine.opportunity_lock import opportunity_lock
 from backend.engine.deliver_message import deliver_recovery_message
 
 
@@ -39,8 +40,15 @@ def run_cycle():
             opportunity["event_type"],
             latest_payment.get("error_reason") if latest_payment else opportunity.get("root_cause"),
         )
-        decision = decide_action(opportunity, classification, conn, latest_payment=latest_payment)
-        result = execute_action(opportunity, decision, conn)
+        # Reading cooldown and acting on it must be one indivisible step, or
+        # two overlapping cycles both read "no recent contact" and both
+        # contact the same customer. See engine/opportunity_lock.py.
+        with opportunity_lock(conn):
+            decision = decide_action(opportunity, classification, conn, latest_payment=latest_payment)
+            result = execute_action(opportunity, decision, conn)
+        # Message delivery is outside the lock deliberately: it is an outbound
+        # side effect on an already-committed decision, and holding the write
+        # lock across it would serialise the whole batch on message generation.
         deliver_recovery_message(opportunity, classification, decision, conn, latest_payment=latest_payment)
         results.append(result)
 

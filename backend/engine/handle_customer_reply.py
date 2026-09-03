@@ -18,6 +18,7 @@ import time
 from backend.engine.classify import classify
 from backend.engine.decide_action import decide_action
 from backend.engine.execute_action import execute_action
+from backend.engine.opportunity_lock import opportunity_lock
 from backend.engine.deliver_message import deliver_recovery_message
 from backend.llm.parse_intent import parse_reply_intent
 
@@ -90,15 +91,23 @@ def handle_customer_reply(opportunity_id: str, customer_message: str, conn) -> d
     try:
         classification = classify(opportunity["event_type"], opportunity.get("root_cause"))
         dispute_flag = parsed["intent"] == "dispute"
-        decision = decide_action(
-            opportunity, classification, conn,
-            latest_payment=latest_payment,
-            extracted_intent=parsed["intent"],
-            intent_confidence=parsed["confidence"],
-            mentioned_reason=parsed["mentioned_reason"],
-            dispute_flag=dispute_flag,
-        )
-        result = execute_action(opportunity, decision, conn)
+        # Same indivisibility the batch loop needs, for the same reason: this
+        # entry point also reads cooldown and then acts on it, so two replies
+        # arriving together on one opportunity could otherwise both be told
+        # "no recent contact" and both fire. See engine/opportunity_lock.py.
+        with opportunity_lock(conn):
+            decision = decide_action(
+                opportunity, classification, conn,
+                latest_payment=latest_payment,
+                extracted_intent=parsed["intent"],
+                intent_confidence=parsed["confidence"],
+                mentioned_reason=parsed["mentioned_reason"],
+                dispute_flag=dispute_flag,
+            )
+            result = execute_action(opportunity, decision, conn)
+        # Outside the lock: an outbound side effect on an already-committed
+        # decision, and it calls the LLM, which must not be held under a write
+        # lock.
         deliver_recovery_message(opportunity, classification, decision, conn, latest_payment=latest_payment)
     except Exception as e:
         return {
