@@ -1,0 +1,448 @@
+{
+  "provenance": {
+    "generated_at_utc": "2026-09-04T19:45:44.053493+00:00",
+    "git_head": "48e3810755b6513fb9656b9db4be7eae8c0f3a9a",
+    "host": "CodeCrafter",
+    "python": "3.13.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "sqlite": "3.45.3",
+    "pinned_packages": {
+      "scikit-learn": "1.7.2",
+      "numpy": "2.2.6",
+      "pandas": "3.0.5",
+      "xgboost": "3.4.1",
+      "joblib": "1.5.3",
+      "fastapi": "0.141.1",
+      "pydantic": "2.13.5",
+      "pytest": "9.1.1"
+    }
+  },
+  "pytest_exit_status": 0,
+  "summary": {
+    "total": 53,
+    "passed": 52,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 1,
+    "gates_passing": 9,
+    "gates_total": 9
+  },
+  "gates": {
+    "phase6.counterfactual_consistency": {
+      "verdict": "PASS",
+      "tests": [
+        {
+          "nodeid": "tests/test_phase6_gates.py::test_counterfactual_consistency_on_a_real_population",
+          "gate": "phase6.counterfactual_consistency",
+          "outcome": "passed",
+          "duration_s": 12.8129,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_gates.py::test_the_gate_fails_when_control_shows_an_executed_action",
+          "gate": "phase6.counterfactual_consistency",
+          "outcome": "passed",
+          "duration_s": 13.5651,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_gates.py::test_a_system_that_acts_on_nobody_does_not_pass",
+          "gate": "phase6.counterfactual_consistency",
+          "outcome": "passed",
+          "duration_s": 0.1722,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_gates.py::test_suppression_that_logged_nothing_does_not_pass",
+          "gate": "phase6.counterfactual_consistency",
+          "outcome": "passed",
+          "duration_s": 16.2836,
+          "longrepr": null
+        }
+      ]
+    },
+    "phase6.declared_bounds": {
+      "verdict": "PASS",
+      "tests": [
+        {
+          "nodeid": "tests/test_phase6_config.py::test_the_lock_file_block_exists_and_is_dated",
+          "gate": "phase6.declared_bounds",
+          "outcome": "passed",
+          "duration_s": 0.0032,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_config.py::test_assignment_parameters_agree_with_the_lock_file",
+          "gate": "phase6.declared_bounds",
+          "outcome": "passed",
+          "duration_s": 0.0006,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_config.py::test_balance_gate_parameters_agree_with_the_lock_file",
+          "gate": "phase6.declared_bounds",
+          "outcome": "passed",
+          "duration_s": 0.0007,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_config.py::test_counterfactual_gate_parameters_agree_with_the_lock_file",
+          "gate": "phase6.declared_bounds",
+          "outcome": "passed",
+          "duration_s": 0.0007,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_config.py::test_the_degenerate_smd_convention_agrees_with_the_lock_file",
+          "gate": "phase6.declared_bounds",
+          "outcome": "passed",
+          "duration_s": 0.0006,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_config.py::test_diagnosis_levels_cover_the_entry_points_accepted_vocabulary",
+          "gate": "phase6.declared_bounds",
+          "outcome": "passed",
+          "duration_s": 0.0006,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_config.py::test_is_payment_failed_is_not_a_duplicate_of_a_diagnosis_level",
+          "gate": "phase6.declared_bounds",
+          "outcome": "passed",
+          "duration_s": 0.0007,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_config.py::test_suppression_outcome_is_in_the_closed_compliance_vocabulary",
+          "gate": "phase6.declared_bounds",
+          "outcome": "passed",
+          "duration_s": 0.0007,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_config.py::test_the_compliance_and_execution_vocabularies_stay_disjoint",
+          "gate": "phase6.declared_bounds",
+          "outcome": "passed",
+          "duration_s": 0.0008,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_config.py::test_resolution_vocabulary_carries_lost_and_not_partially_recovered",
+          "gate": "phase6.declared_bounds",
+          "outcome": "passed",
+          "duration_s": 0.0006,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_config.py::test_outcome_sources_are_a_closed_vocabulary_naming_every_caller",
+          "gate": "phase6.declared_bounds",
+          "outcome": "passed",
+          "duration_s": 0.0006,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_config.py::test_the_synthetic_source_is_distinct_from_every_real_one",
+          "gate": "phase6.declared_bounds",
+          "outcome": "passed",
+          "duration_s": 0.0002,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_config.py::test_unassigned_opportunities_are_not_suppressed",
+          "gate": "phase6.declared_bounds",
+          "outcome": "passed",
+          "duration_s": 0.0002,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_config.py::test_the_smd_bound_is_the_balance_convention_not_the_effect_size_one",
+          "gate": "phase6.declared_bounds",
+          "outcome": "passed",
+          "duration_s": 0.0007,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_config.py::test_bucketing_is_deterministic_and_salt_dependent",
+          "gate": "phase6.declared_bounds",
+          "outcome": "passed",
+          "duration_s": 0.012,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_config.py::test_bucketing_is_uniform_enough_to_hit_the_declared_holdout",
+          "gate": "phase6.declared_bounds",
+          "outcome": "passed",
+          "duration_s": 0.2133,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_config.py::test_assignment_method_record_is_self_describing",
+          "gate": "phase6.declared_bounds",
+          "outcome": "passed",
+          "duration_s": 0.0006,
+          "longrepr": null
+        }
+      ]
+    },
+    "phase6.exit_gate": {
+      "verdict": "PASS",
+      "tests": [
+        {
+          "nodeid": "tests/test_phase6_exit_gate.py::test_concurrent_assignment_attempts_produce_one_arm",
+          "gate": "phase6.exit_gate",
+          "outcome": "passed",
+          "duration_s": 0.0965,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_exit_gate.py::test_concurrent_duplicate_event_delivery_creates_one_opportunity",
+          "gate": "phase6.exit_gate",
+          "outcome": "passed",
+          "duration_s": 5.1457,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_exit_gate.py::test_the_same_outcome_event_twice_does_not_double_count",
+          "gate": "phase6.exit_gate",
+          "outcome": "passed",
+          "duration_s": 0.0096,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_exit_gate.py::test_a_conflicting_second_outcome_does_not_corrupt_the_first",
+          "gate": "phase6.exit_gate",
+          "outcome": "passed",
+          "duration_s": 0.0107,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_exit_gate.py::test_concurrent_duplicate_outcome_submissions_produce_one_winner",
+          "gate": "phase6.exit_gate",
+          "outcome": "passed",
+          "duration_s": 0.134,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_exit_gate.py::test_observing_an_outcome_never_changes_the_assignment",
+          "gate": "phase6.exit_gate",
+          "outcome": "passed",
+          "duration_s": 0.047,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_exit_gate.py::test_assignment_timestamps_are_never_moved_by_later_activity",
+          "gate": "phase6.exit_gate",
+          "outcome": "passed",
+          "duration_s": 0.0165,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_exit_gate.py::test_every_outcome_traces_to_its_opportunity_and_execution_history",
+          "gate": "phase6.exit_gate",
+          "outcome": "passed",
+          "duration_s": 13.1757,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_exit_gate.py::test_a_complete_controlled_experiment_end_to_end",
+          "gate": "phase6.exit_gate",
+          "outcome": "passed",
+          "duration_s": 43.8577,
+          "longrepr": null
+        }
+      ]
+    },
+    "phase6.randomization_balance": {
+      "verdict": "PASS",
+      "tests": [
+        {
+          "nodeid": "tests/test_phase6_gates.py::test_randomization_balance_on_a_real_assigned_population",
+          "gate": "phase6.randomization_balance",
+          "outcome": "skipped",
+          "duration_s": 0.0007,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_gates.py::test_the_gate_refuses_to_certify_a_sample_too_small",
+          "gate": "phase6.randomization_balance",
+          "outcome": "passed",
+          "duration_s": 0.1382,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_gates.py::test_an_empty_experiment_is_not_evaluable",
+          "gate": "phase6.randomization_balance",
+          "outcome": "passed",
+          "duration_s": 0.0015,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_gates.py::test_the_degenerate_smd_conventions_hold",
+          "gate": "phase6.randomization_balance",
+          "outcome": "passed",
+          "duration_s": 0.0004,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_gates.py::test_unassigned_opportunities_are_excluded_from_the_population",
+          "gate": "phase6.randomization_balance",
+          "outcome": "passed",
+          "duration_s": 0.0131,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_gates.py::test_the_committed_evidence_file_records_both_gates",
+          "gate": "phase6.randomization_balance",
+          "outcome": "passed",
+          "duration_s": 0.0031,
+          "longrepr": null
+        }
+      ]
+    },
+    "phase7.estimator": {
+      "verdict": "PASS",
+      "tests": [
+        {
+          "nodeid": "tests/test_phase7_attribution.py::test_difference_in_proportions_against_a_hand_computation",
+          "gate": "phase7.estimator",
+          "outcome": "passed",
+          "duration_s": 0.0011,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase7_attribution.py::test_no_difference_gives_an_interval_straddling_zero",
+          "gate": "phase7.estimator",
+          "outcome": "passed",
+          "duration_s": 0.0006,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase7_attribution.py::test_difference_in_means_uses_unpooled_variances",
+          "gate": "phase7.estimator",
+          "outcome": "passed",
+          "duration_s": 0.0006,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase7_attribution.py::test_the_estimator_is_named_in_the_report",
+          "gate": "phase7.estimator",
+          "outcome": "passed",
+          "duration_s": 0.4124,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase7_attribution.py::test_a_raw_recovery_rate_is_never_labelled_incremental",
+          "gate": "phase7.estimator",
+          "outcome": "passed",
+          "duration_s": 0.7873,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase7_attribution.py::test_a_confidence_interval_accompanies_every_estimate",
+          "gate": "phase7.estimator",
+          "outcome": "passed",
+          "duration_s": 0.7042,
+          "longrepr": null
+        }
+      ]
+    },
+    "phase7.min_n": {
+      "verdict": "PASS",
+      "tests": [
+        {
+          "nodeid": "tests/test_phase7_attribution.py::test_an_underpowered_population_reports_insufficient_data",
+          "gate": "phase7.min_n",
+          "outcome": "passed",
+          "duration_s": 0.0221,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase7_attribution.py::test_one_arm_below_the_floor_is_still_a_refusal",
+          "gate": "phase7.min_n",
+          "outcome": "passed",
+          "duration_s": 0.2077,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase7_attribution.py::test_an_empty_population_refuses_rather_than_reporting_zero",
+          "gate": "phase7.min_n",
+          "outcome": "passed",
+          "duration_s": 0.0017,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase7_attribution.py::test_the_floor_is_a_declared_constant_not_a_literal",
+          "gate": "phase7.min_n",
+          "outcome": "passed",
+          "duration_s": 0.0006,
+          "longrepr": null
+        }
+      ]
+    },
+    "phase7.prediction_vs_observation": {
+      "verdict": "PASS",
+      "tests": [
+        {
+          "nodeid": "tests/test_phase7_attribution.py::test_predicted_and_observed_are_separate_quantities",
+          "gate": "phase7.prediction_vs_observation",
+          "outcome": "passed",
+          "duration_s": 0.6306,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase7_attribution.py::test_a_missing_prediction_is_reported_not_defaulted",
+          "gate": "phase7.prediction_vs_observation",
+          "outcome": "passed",
+          "duration_s": 0.5016,
+          "longrepr": null
+        }
+      ]
+    },
+    "phase7.synthetic_honesty": {
+      "verdict": "PASS",
+      "tests": [
+        {
+          "nodeid": "tests/test_phase7_attribution.py::test_every_report_is_labelled_synthetic",
+          "gate": "phase7.synthetic_honesty",
+          "outcome": "passed",
+          "duration_s": 0.4342,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase7_attribution.py::test_a_mixed_source_population_is_refused",
+          "gate": "phase7.synthetic_honesty",
+          "outcome": "passed",
+          "duration_s": 0.5937,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase7_attribution.py::test_the_report_declares_its_aggregate_only_scope",
+          "gate": "phase7.synthetic_honesty",
+          "outcome": "passed",
+          "duration_s": 0.5144,
+          "longrepr": null
+        }
+      ]
+    },
+    "phase7.traceability": {
+      "verdict": "PASS",
+      "tests": [
+        {
+          "nodeid": "tests/test_phase7_attribution.py::test_every_figure_is_reproducible_from_the_traced_query",
+          "gate": "phase7.traceability",
+          "outcome": "passed",
+          "duration_s": 0.6772,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase7_attribution.py::test_nothing_is_cached_between_calls",
+          "gate": "phase7.traceability",
+          "outcome": "passed",
+          "duration_s": 0.7305,
+          "longrepr": null
+        }
+      ]
+    }
+  }
+}

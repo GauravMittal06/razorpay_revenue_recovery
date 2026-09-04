@@ -1,0 +1,1170 @@
+{
+  "provenance": {
+    "generated_at_utc": "2026-09-04T15:12:35.240794+00:00",
+    "git_head": "8a94db50abe6fd32b6e3ed4b4f4499af5614d612",
+    "host": "CodeCrafter",
+    "python": "3.13.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "sqlite": "3.45.3",
+    "pinned_packages": {
+      "scikit-learn": "1.7.2",
+      "numpy": "2.2.6",
+      "pandas": "3.0.5",
+      "xgboost": "3.4.1",
+      "joblib": "1.5.3",
+      "fastapi": "0.141.1",
+      "pydantic": "2.13.5",
+      "pytest": "9.1.1"
+    }
+  },
+  "pytest_exit_status": 1,
+  "summary": {
+    "total": 154,
+    "passed": 145,
+    "failed": 8,
+    "errors": 0,
+    "skipped": 1,
+    "gates_passing": 7,
+    "gates_total": 12
+  },
+  "gates": {
+    "permanent.credential_hygiene": {
+      "verdict": "NOT COMPLETE",
+      "tests": [
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_no_secret_literal_in_tracked_source",
+          "gate": "permanent.credential_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0352,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_env_is_gitignored",
+          "gate": "permanent.credential_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0177,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_env_is_not_tracked_in_the_git_index",
+          "gate": "permanent.credential_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0808,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_exposed_key_history_exposure_is_documented",
+          "gate": "permanent.credential_hygiene",
+          "outcome": "failed",
+          "duration_s": 0.001,
+          "longrepr": "\u001b[0m\u001b[37m@pytest\u001b[39;49;00m.mark.gate(\u001b[33m\"\u001b[39;49;00m\u001b[33mpermanent.credential_hygiene\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m)\u001b[90m\u001b[39;49;00m\n    \u001b[94mdef\u001b[39;49;00m\u001b[90m \u001b[39;49;00m\u001b[92mtest_exposed_key_history_exposure_is_documented\u001b[39;49;00m():\u001b[90m\u001b[39;49;00m\n    \u001b[90m    \u001b[39;49;00m\u001b[33m\"\"\"\u001b[39;49;00m\n    \u001b[33m    Phase 0's [NEW] clause: confirm whether the exposed key ever reached\u001b[39;49;00m\n    \u001b[33m    version-control *history*, not just the working tree, and document it\u001b[39;49;00m\n    \u001b[33m    even if rewriting history is out of scope. This test asserts the\u001b[39;49;00m\n    \u001b[33m    documentation exists and names the outcome -- it cannot itself decide\u001b[39;49;00m\n    \u001b[33m    whether a rotation happened.\u001b[39;49;00m\n    \u001b[33m    \"\"\"\u001b[39;49;00m\u001b[90m\u001b[39;49;00m\n        notes = BACKEND_DIR / \u001b[33m\"\u001b[39;49;00m\u001b[33mBOOTSTRAP_NOTES.md\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[90m\u001b[39;49;00m\n>       \u001b[94massert\u001b[39;49;00m notes.exists(), \u001b[33m\"\u001b[39;49;00m\u001b[33mBOOTSTRAP_NOTES.md missing\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[90m\u001b[39;49;00m\n\u001b[1m\u001b[31mE       AssertionError: BOOTSTRAP_NOTES.md missing\u001b[0m\n\u001b[1m\u001b[31mE       assert False\u001b[0m\n\u001b[1m\u001b[31mE        +  where False = exists()\u001b[0m\n\u001b[1m\u001b[31mE        +    where exists = WindowsPath('C:/Users/gaura/Downloads/CODING/Projects/professional/razorpay_hackathon_aug_26/backend/BOOTSTRAP_NOTES.md').exists\u001b[0m\n\n\u001b[1m\u001b[31mbackend\\tests\\test_permanent_gates.py\u001b[0m:174: AssertionError"
+        }
+      ]
+    },
+    "permanent.dataset_provenance": {
+      "verdict": "NOT COMPLETE",
+      "tests": [
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_training_corpus_is_not_ambiguously_duplicated",
+          "gate": "permanent.dataset_provenance",
+          "outcome": "passed",
+          "duration_s": 0.0597,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_training_corpus_content_hash_is_recorded_somewhere",
+          "gate": "permanent.dataset_provenance",
+          "outcome": "failed",
+          "duration_s": 0.2242,
+          "longrepr": "\u001b[0m\u001b[37m@pytest\u001b[39;49;00m.mark.gate(\u001b[33m\"\u001b[39;49;00m\u001b[33mpermanent.dataset_provenance\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m)\u001b[90m\u001b[39;49;00m\n    \u001b[94mdef\u001b[39;49;00m\u001b[90m \u001b[39;49;00m\u001b[92mtest_training_corpus_content_hash_is_recorded_somewhere\u001b[39;49;00m():\u001b[90m\u001b[39;49;00m\n    \u001b[90m    \u001b[39;49;00m\u001b[33m\"\"\"\u001b[39;49;00m\n    \u001b[33m    BOOTSTRAP_NOTES.md states the corpus was produced with seed=42 and\u001b[39;49;00m\n    \u001b[33m    n_cases=8000. What is missing is any hash tying that description to the\u001b[39;49;00m\n    \u001b[33m    bytes actually on disk -- so the description cannot be checked, only\u001b[39;49;00m\n    \u001b[33m    believed. EXPECTED TO FAIL: this is the concrete gap behind the\u001b[39;49;00m\n    \u001b[33m    \"dataset provenance\" gate.\u001b[39;49;00m\n    \u001b[33m\u001b[39;49;00m\n    \u001b[33m    Context: the `dataset_registry` table exists in the Phase 1 DDL as the\u001b[39;49;00m\n    \u001b[33m    intended home for exactly this record and is scheduled to be populated\u001b[39;49;00m\n    \u001b[33m    in Phase 2. So this is a known deferral, not an oversight -- but the\u001b[39;49;00m\n    \u001b[33m    permanent gate applies to any dataset in use *now*, and the shipped\u001b[39;49;00m\n    \u001b[33m    models were trained on this corpus in Phase 0.\u001b[39;49;00m\n    \u001b[33m    \"\"\"\u001b[39;49;00m\u001b[90m\u001b[39;49;00m\n        corpus = BACKEND_DIR / \u001b[33m\"\u001b[39;49;00m\u001b[33mml\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m / \u001b[33m\"\u001b[39;49;00m\u001b[33mdata\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m / \u001b[33m\"\u001b[39;49;00m\u001b[33mtraining_corpus.csv\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[90m\u001b[39;49;00m\n        \u001b[94massert\u001b[39;49;00m corpus.exists(), \u001b[33mf\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[33m{\u001b[39;49;00mcorpus\u001b[33m}\u001b[39;49;00m\u001b[33m missing\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[90m\u001b[39;49;00m\n        digest = _sha256(corpus)\u001b[90m\u001b[39;49;00m\n        haystack = \u001b[33m\"\u001b[39;49;00m\u001b[33m\\n\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m.join(\u001b[90m\u001b[39;49;00m\n            p.read_text(encoding=\u001b[33m\"\u001b[39;49;00m\u001b[33mutf-8\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m, errors=\u001b[33m\"\u001b[39;49;00m\u001b[33mreplace\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m)\u001b[90m\u001b[39;49;00m\n            \u001b[94mfor\u001b[39;49;00m p \u001b[95min\u001b[39;49;00m \u001b[96mlist\u001b[39;49;00m(BACKEND_DIR.glob(\u001b[33m\"\u001b[39;49;00m\u001b[33m*.md\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m)) + \u001b[96mlist\u001b[39;49;00m(BACKEND_DIR.rglob(\u001b[33m\"\u001b[39;49;00m\u001b[33m*provenance*\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m))\u001b[90m\u001b[39;49;00m\n            \u001b[94mif\u001b[39;49;00m p.is_file()\u001b[90m\u001b[39;49;00m\n        ).lower()\u001b[90m\u001b[39;49;00m\n>       \u001b[94massert\u001b[39;49;00m digest.lower() \u001b[95min\u001b[39;49;00m haystack, (\u001b[90m\u001b[39;49;00m\n            \u001b[33mf\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[33mno committed record contains sha256=\u001b[39;49;00m\u001b[33m{\u001b[39;49;00mdigest\u001b[33m}\u001b[39;49;00m\u001b[33m for \u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[90m\u001b[39;49;00m\n            \u001b[33m\"\u001b[39;49;00m\u001b[33mml/data/training_corpus.csv, so the stated seed/row-count provenance \u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[90m\u001b[39;49;00m\n            \u001b[33m\"\u001b[39;49;00m\u001b[33mcannot be verified against the file that is actually present.\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[90m\u001b[39;49;00m\n        )\u001b[90m\u001b[39;49;00m\n\u001b[1m\u001b[31mE       AssertionError: no committed record contains sha256=2c1bedf0c6dc47fa1b9792f92b507e2865e504f426f79acc85e08595053ab82e for ml/data/training_corpus.csv, so the stated seed/row-count provenance cannot be verified against the file that is actually present.\u001b[0m\n\u001b[1m\u001b[31mE       assert '2c1bedf0c6dc47fa1b9792f92b507e2865e504f426f79acc85e08595053ab82e' in '# phase 3 \u2192 phase 4 handoff\\n\\nstandalone; read with `sot.md`, `execution_plan.md`, `state_and_decisions.md`, `file_i...nference.py`,\\n`ml/outcome_features.py`, the phase 3 eval artifacts and `optimize.py` are all\\nuntouched by phase 6.\\n'\u001b[0m\n\u001b[1m\u001b[31mE        +  where '2c1bedf0c6dc47fa1b9792f92b507e2865e504f426f79acc85e08595053ab82e' = <built-in method lower of str object at 0x0000022C0D54B8A0>()\u001b[0m\n\u001b[1m\u001b[31mE        +    where <built-in method lower of str object at 0x0000022C0D54B8A0> = '2c1bedf0c6dc47fa1b9792f92b507e2865e504f426f79acc85e08595053ab82e'.lower\u001b[0m\n\n\u001b[1m\u001b[31mbackend\\tests\\test_permanent_gates.py\u001b[0m:892: AssertionError"
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_seed_generator_persists_its_own_provenance",
+          "gate": "permanent.dataset_provenance",
+          "outcome": "failed",
+          "duration_s": 0.082,
+          "longrepr": "seed_data_dir = WindowsPath('C:/Users/gaura/AppData/Local/Temp/pytest-of-gaura/pytest-129/test_seed_generator_persists_i0/data')\n\n    \u001b[0m\u001b[37m@pytest\u001b[39;49;00m.mark.gate(\u001b[33m\"\u001b[39;49;00m\u001b[33mpermanent.dataset_provenance\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m)\u001b[90m\u001b[39;49;00m\n    \u001b[94mdef\u001b[39;49;00m\u001b[90m \u001b[39;49;00m\u001b[92mtest_seed_generator_persists_its_own_provenance\u001b[39;49;00m(seed_data_dir):\u001b[90m\u001b[39;49;00m\n    \u001b[90m    \u001b[39;49;00m\u001b[33m\"\"\"\u001b[39;49;00m\n    \u001b[33m    generate_seed_data.py *prints* `generator=... seed=... now=...` and writes\u001b[39;49;00m\n    \u001b[33m    four JSON files that carry none of it. Once the JSON is loaded into\u001b[39;49;00m\n    \u001b[33m    recovery.db, nothing on disk or in the database records which generator\u001b[39;49;00m\n    \u001b[33m    version or clock produced the rows -- the provenance lives only in\u001b[39;49;00m\n    \u001b[33m    whatever terminal scrollback the operator happened to keep.\u001b[39;49;00m\n    \u001b[33m\u001b[39;49;00m\n    \u001b[33m    EXPECTED TO FAIL. Runs against a freshly generated dataset rather than the\u001b[39;49;00m\n    \u001b[33m    checked-in one, because the gate is about the generator's behaviour.\u001b[39;49;00m\n    \u001b[33m    \"\"\"\u001b[39;49;00m\u001b[90m\u001b[39;49;00m\n        \u001b[94mfrom\u001b[39;49;00m\u001b[90m \u001b[39;49;00m\u001b[04m\u001b[96mbackend\u001b[39;49;00m\u001b[04m\u001b[96m.\u001b[39;49;00m\u001b[04m\u001b[96mdata\u001b[39;49;00m\u001b[04m\u001b[96m.\u001b[39;49;00m\u001b[04m\u001b[96mgenerate_seed_data\u001b[39;49;00m\u001b[90m \u001b[39;49;00m\u001b[94mimport\u001b[39;49;00m GENERATOR_VERSION, RNG_SEED\u001b[90m\u001b[39;49;00m\n    \u001b[90m\u001b[39;49;00m\n        emitted = \u001b[96msorted\u001b[39;49;00m(p.name \u001b[94mfor\u001b[39;49;00m p \u001b[95min\u001b[39;49;00m seed_data_dir.iterdir() \u001b[94mif\u001b[39;49;00m p.is_file())\u001b[90m\u001b[39;49;00m\n        blob = \u001b[33m\"\u001b[39;49;00m\u001b[33m\\n\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m.join(p.read_text(encoding=\u001b[33m\"\u001b[39;49;00m\u001b[33mutf-8\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m, errors=\u001b[33m\"\u001b[39;49;00m\u001b[33mreplace\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m)\u001b[90m\u001b[39;49;00m\n                         \u001b[94mfor\u001b[39;49;00m p \u001b[95min\u001b[39;49;00m seed_data_dir.iterdir() \u001b[94mif\u001b[39;49;00m p.is_file())\u001b[90m\u001b[39;49;00m\n>       \u001b[94massert\u001b[39;49;00m GENERATOR_VERSION \u001b[95min\u001b[39;49;00m blob \u001b[95mand\u001b[39;49;00m \u001b[96mstr\u001b[39;49;00m(RNG_SEED) \u001b[95min\u001b[39;49;00m blob, (\u001b[90m\u001b[39;49;00m\n            \u001b[33mf\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[33mseed dataset carries no provenance. Files emitted: \u001b[39;49;00m\u001b[33m{\u001b[39;49;00memitted\u001b[33m}\u001b[39;49;00m\u001b[33m. \u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[90m\u001b[39;49;00m\n            \u001b[33mf\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[33mExpected generator version \u001b[39;49;00m\u001b[33m{\u001b[39;49;00mGENERATOR_VERSION\u001b[33m!r}\u001b[39;49;00m\u001b[33m and seed \u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[90m\u001b[39;49;00m\n            \u001b[33mf\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[33m{\u001b[39;49;00mRNG_SEED\u001b[33m}\u001b[39;49;00m\u001b[33m to be written into the dataset (a manifest file, or a \u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[90m\u001b[39;49;00m\n            \u001b[33mf\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[33mheader record), not only printed to stdout.\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[90m\u001b[39;49;00m\n        )\u001b[90m\u001b[39;49;00m\n\u001b[1m\u001b[31mE       AssertionError: seed dataset carries no provenance. Files emitted: ['bank_health_observations.json', 'customers.json', 'merchants.json', 'opportunities.json', 'payments.json']. Expected generator version 'seed-data-v2-opportunity-schema' and seed 7 to be written into the dataset (a manifest file, or a header record), not only printed to stdout.\u001b[0m\n\u001b[1m\u001b[31mE       assert ('seed-data-v2-opportunity-schema' in '[\\n  {\\n    \"bank\": \"hdfc\",\\n    \"method\": \"card\",\\n    \"psp\": \"razorpay_gw_a\",\\n    \"window_start\": 0.0,\\n    \"windo...l,\\n    \"error_reason\": null,\\n    \"created_at\": 1755609297,\\n    \"bank\": \"kotak\",\\n    \"psp\": \"razorpay_gw_c\"\\n  }\\n]')\u001b[0m\n\n\u001b[1m\u001b[31mbackend\\tests\\test_permanent_gates.py\u001b[0m:916: AssertionError"
+        }
+      ]
+    },
+    "permanent.idempotency": {
+      "verdict": "PASS",
+      "tests": [
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_bootstrap_sequence_is_idempotent",
+          "gate": "permanent.idempotency",
+          "outcome": "passed",
+          "duration_s": 0.6451,
+          "longrepr": null
+        }
+      ]
+    },
+    "permanent.import_hygiene": {
+      "verdict": "NOT COMPLETE",
+      "tests": [
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_no_syspath_manipulation_remains",
+          "gate": "permanent.import_hygiene",
+          "outcome": "failed",
+          "duration_s": 0.0496,
+          "longrepr": "source_files = [WindowsPath('C:/Users/gaura/Downloads/CODING/Projects/professional/razorpay_hackathon_aug_26/backend/__init__.py'), W...wsPath('C:/Users/gaura/Downloads/CODING/Projects/professional/razorpay_hackathon_aug_26/backend/api/__init__.py'), ...]\n\n    \u001b[0m\u001b[37m@pytest\u001b[39;49;00m.mark.gate(\u001b[33m\"\u001b[39;49;00m\u001b[33mpermanent.import_hygiene\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m)\u001b[90m\u001b[39;49;00m\n    \u001b[94mdef\u001b[39;49;00m\u001b[90m \u001b[39;49;00m\u001b[92mtest_no_syspath_manipulation_remains\u001b[39;49;00m(source_files):\u001b[90m\u001b[39;49;00m\n    \u001b[90m    \u001b[39;49;00m\u001b[33m\"\"\"\u001b[39;49;00m\n    \u001b[33m    Phase 0 removed the `sys.path.append` hack from engine/*.py and unified\u001b[39;49;00m\n    \u001b[33m    on `backend.`-prefixed imports. Nothing may reintroduce it -- a single\u001b[39;49;00m\n    \u001b[33m    path hack makes the import root ambiguous again, which is how the\u001b[39;49;00m\n    \u001b[33m    original split arose.\u001b[39;49;00m\n    \u001b[33m    \"\"\"\u001b[39;49;00m\u001b[90m\u001b[39;49;00m\n        offenders = []\u001b[90m\u001b[39;49;00m\n        \u001b[94mfor\u001b[39;49;00m path \u001b[95min\u001b[39;49;00m source_files:\u001b[90m\u001b[39;49;00m\n            text = path.read_text(encoding=\u001b[33m\"\u001b[39;49;00m\u001b[33mutf-8\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m, errors=\u001b[33m\"\u001b[39;49;00m\u001b[33mreplace\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m)\u001b[90m\u001b[39;49;00m\n            \u001b[94mfor\u001b[39;49;00m lineno, line \u001b[95min\u001b[39;49;00m \u001b[96menumerate\u001b[39;49;00m(text.splitlines(), \u001b[94m1\u001b[39;49;00m):\u001b[90m\u001b[39;49;00m\n                stripped = line.strip()\u001b[90m\u001b[39;49;00m\n                \u001b[94mif\u001b[39;49;00m stripped.startswith(\u001b[33m\"\u001b[39;49;00m\u001b[33m#\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m):\u001b[90m\u001b[39;49;00m\n                    \u001b[94mcontinue\u001b[39;49;00m\u001b[90m\u001b[39;49;00m\n                \u001b[94mif\u001b[39;49;00m re.search(\u001b[33mr\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[33msys\u001b[39;49;00m\u001b[33m\\\u001b[39;49;00m\u001b[33m.path\u001b[39;49;00m\u001b[33m\\\u001b[39;49;00m\u001b[33ms*\u001b[39;49;00m\u001b[33m\\\u001b[39;49;00m\u001b[33m.\u001b[39;49;00m\u001b[33m\\\u001b[39;49;00m\u001b[33ms*(append|insert|extend)\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m, stripped):\u001b[90m\u001b[39;49;00m\n                    offenders.append(\u001b[33mf\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[33m{\u001b[39;49;00mpath.relative_to(PROJECT_ROOT)\u001b[33m}\u001b[39;49;00m\u001b[33m:\u001b[39;49;00m\u001b[33m{\u001b[39;49;00mlineno\u001b[33m}\u001b[39;49;00m\u001b[33m: \u001b[39;49;00m\u001b[33m{\u001b[39;49;00mstripped\u001b[33m}\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m)\u001b[90m\u001b[39;49;00m\n>       \u001b[94massert\u001b[39;49;00m \u001b[95mnot\u001b[39;49;00m offenders, \u001b[33m\"\u001b[39;49;00m\u001b[33msys.path manipulation reintroduced:\u001b[39;49;00m\u001b[33m\\n\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m + \u001b[33m\"\u001b[39;49;00m\u001b[33m\\n\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m.join(offenders)\u001b[90m\u001b[39;49;00m\n\u001b[1m\u001b[31mE       AssertionError: sys.path manipulation reintroduced:\u001b[0m\n\u001b[1m\u001b[31mE         backend\\data_factory\\phase3_eval_setup.py:41: sys.path.insert(0, str(_ROOT))\u001b[0m\n\u001b[1m\u001b[31mE         backend\\data_factory\\run_generation.py:30: sys.path.insert(0, str(_ROOT))\u001b[0m\n\u001b[1m\u001b[31mE         backend\\ml\\bank_health_setup.py:32: sys.path.insert(0, str(_ROOT))\u001b[0m\n\u001b[1m\u001b[31mE         backend\\ml\\evaluate_outcome_model.py:32: sys.path.insert(0, str(_ROOT))\u001b[0m\n\u001b[1m\u001b[31mE         backend\\ml\\train_outcome_model.py:32: sys.path.insert(0, str(_ROOT))\u001b[0m\n\u001b[1m\u001b[31mE       assert not ['backend\\\\data_factory\\\\phase3_eval_setup.py:41: sys.path.insert(0, str(_ROOT))', 'backend\\\\data_factory\\\\run_generat...model.py:32: sys.path.insert(0, str(_ROOT))', 'backend\\\\ml\\\\train_outcome_model.py:32: sys.path.insert(0, str(_ROOT))']\u001b[0m\n\n\u001b[1m\u001b[31mbackend\\tests\\test_permanent_gates.py\u001b[0m:64: AssertionError"
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.api]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0069,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.api.actions]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0048,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.api.queries]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0051,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.data]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0011,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.data.generate_experiment_volume]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0014,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.data.generate_seed_data]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0006,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.db]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0005,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.db.db]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0005,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.engine]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0007,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.engine.assign_experiment_group]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0007,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.engine.classify]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0006,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.engine.core_loop]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0057,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.engine.decide_action]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0004,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.engine.deliver_message]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0004,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.engine.dispatch_scheduled]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0003,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.engine.execute_action]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0003,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.engine.handle_customer_reply]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0006,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.engine.intervention_cost]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0006,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.engine.mark_opportunity_recovered]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0008,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.engine.observe_outcome]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0008,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.engine.opportunity_lock]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0006,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.engine.optimize]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0006,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.engine.optimizer_config]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0007,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.engine.phase5_config]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0005,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.engine.phase6_config]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0006,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.engine.pipeline]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0006,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.engine.trigger_event]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0008,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.llm]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0007,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.llm.generate_message]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0004,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.llm.parse_intent]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0005,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.ml]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0006,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.ml.bank_health_setup]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0112,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.ml.evaluate_outcome_model]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0865,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.ml.inference]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0003,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.ml.outcome_features]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0006,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.ml.simulate_training_data]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.004,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.ml.train_outcome_model]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0001,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.ml.train_risk_model]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.003,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_module_imports_under_package_convention[backend.ml.verify_sensitivity]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0028,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_relative_or_bare_intra_project_imports_are_absent",
+          "gate": "permanent.import_hygiene",
+          "outcome": "failed",
+          "duration_s": 0.3249,
+          "longrepr": "source_files = [WindowsPath('C:/Users/gaura/Downloads/CODING/Projects/professional/razorpay_hackathon_aug_26/backend/__init__.py'), W...wsPath('C:/Users/gaura/Downloads/CODING/Projects/professional/razorpay_hackathon_aug_26/backend/api/__init__.py'), ...]\n\n    \u001b[0m\u001b[37m@pytest\u001b[39;49;00m.mark.gate(\u001b[33m\"\u001b[39;49;00m\u001b[33mpermanent.import_hygiene\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m)\u001b[90m\u001b[39;49;00m\n    \u001b[94mdef\u001b[39;49;00m\u001b[90m \u001b[39;49;00m\u001b[92mtest_relative_or_bare_intra_project_imports_are_absent\u001b[39;49;00m(source_files):\u001b[90m\u001b[39;49;00m\n    \u001b[90m    \u001b[39;49;00m\u001b[33m\"\"\"\u001b[39;49;00m\n    \u001b[33m    Guards the *other* half of the Phase 0 fix: a module importing\u001b[39;49;00m\n    \u001b[33m    `from engine.classify import ...` (treating backend/ as root) instead of\u001b[39;49;00m\n    \u001b[33m    `from backend.engine.classify import ...` would only work under one\u001b[39;49;00m\n    \u001b[33m    launch condition, which is the exact fragility that was removed.\u001b[39;49;00m\n    \u001b[33m    \"\"\"\u001b[39;49;00m\u001b[90m\u001b[39;49;00m\n        bare_roots = (\u001b[33m\"\u001b[39;49;00m\u001b[33mapi\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m, \u001b[33m\"\u001b[39;49;00m\u001b[33mdb\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m, \u001b[33m\"\u001b[39;49;00m\u001b[33mengine\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m, \u001b[33m\"\u001b[39;49;00m\u001b[33mllm\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m, \u001b[33m\"\u001b[39;49;00m\u001b[33mml\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m)\u001b[90m\u001b[39;49;00m\n        offenders = []\u001b[90m\u001b[39;49;00m\n        \u001b[94mfor\u001b[39;49;00m path \u001b[95min\u001b[39;49;00m source_files:\u001b[90m\u001b[39;49;00m\n            tree = ast.parse(path.read_text(encoding=\u001b[33m\"\u001b[39;49;00m\u001b[33mutf-8\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m, errors=\u001b[33m\"\u001b[39;49;00m\u001b[33mreplace\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m), \u001b[96mstr\u001b[39;49;00m(path))\u001b[90m\u001b[39;49;00m\n            \u001b[94mfor\u001b[39;49;00m node \u001b[95min\u001b[39;49;00m ast.walk(tree):\u001b[90m\u001b[39;49;00m\n                \u001b[94mif\u001b[39;49;00m \u001b[96misinstance\u001b[39;49;00m(node, ast.ImportFrom):\u001b[90m\u001b[39;49;00m\n                    \u001b[94mif\u001b[39;49;00m node.level \u001b[95mand\u001b[39;49;00m node.level > \u001b[94m0\u001b[39;49;00m:\u001b[90m\u001b[39;49;00m\n                        offenders.append(\u001b[90m\u001b[39;49;00m\n                            \u001b[33mf\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[33m{\u001b[39;49;00mpath.relative_to(PROJECT_ROOT)\u001b[33m}\u001b[39;49;00m\u001b[33m:\u001b[39;49;00m\u001b[33m{\u001b[39;49;00mnode.lineno\u001b[33m}\u001b[39;49;00m\u001b[33m: relative import\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m)\u001b[90m\u001b[39;49;00m\n                    \u001b[94melif\u001b[39;49;00m node.module \u001b[95mand\u001b[39;49;00m node.module.split(\u001b[33m\"\u001b[39;49;00m\u001b[33m.\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m)[\u001b[94m0\u001b[39;49;00m] \u001b[95min\u001b[39;49;00m bare_roots:\u001b[90m\u001b[39;49;00m\n                        offenders.append(\u001b[90m\u001b[39;49;00m\n                            \u001b[33mf\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[33m{\u001b[39;49;00mpath.relative_to(PROJECT_ROOT)\u001b[33m}\u001b[39;49;00m\u001b[33m:\u001b[39;49;00m\u001b[33m{\u001b[39;49;00mnode.lineno\u001b[33m}\u001b[39;49;00m\u001b[33m: \u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[90m\u001b[39;49;00m\n                            \u001b[33mf\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[33mbare `from \u001b[39;49;00m\u001b[33m{\u001b[39;49;00mnode.module\u001b[33m}\u001b[39;49;00m\u001b[33m import ...`\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m)\u001b[90m\u001b[39;49;00m\n                \u001b[94melif\u001b[39;49;00m \u001b[96misinstance\u001b[39;49;00m(node, ast.Import):\u001b[90m\u001b[39;49;00m\n                    \u001b[94mfor\u001b[39;49;00m alias \u001b[95min\u001b[39;49;00m node.names:\u001b[90m\u001b[39;49;00m\n                        \u001b[94mif\u001b[39;49;00m alias.name.split(\u001b[33m\"\u001b[39;49;00m\u001b[33m.\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m)[\u001b[94m0\u001b[39;49;00m] \u001b[95min\u001b[39;49;00m bare_roots:\u001b[90m\u001b[39;49;00m\n                            offenders.append(\u001b[90m\u001b[39;49;00m\n                                \u001b[33mf\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[33m{\u001b[39;49;00mpath.relative_to(PROJECT_ROOT)\u001b[33m}\u001b[39;49;00m\u001b[33m:\u001b[39;49;00m\u001b[33m{\u001b[39;49;00mnode.lineno\u001b[33m}\u001b[39;49;00m\u001b[33m: \u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[90m\u001b[39;49;00m\n                                \u001b[33mf\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[33mbare `import \u001b[39;49;00m\u001b[33m{\u001b[39;49;00malias.name\u001b[33m}\u001b[39;49;00m\u001b[33m`\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m)\u001b[90m\u001b[39;49;00m\n>       \u001b[94massert\u001b[39;49;00m \u001b[95mnot\u001b[39;49;00m offenders, \u001b[33m\"\u001b[39;49;00m\u001b[33mnon-`backend.`-rooted intra-project imports:\u001b[39;49;00m\u001b[33m\\n\u001b[39;49;00m\u001b[33m\"\u001b["
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_engine_module_imports_standalone[backend.engine.assign_experiment_group]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.1082,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_engine_module_imports_standalone[backend.engine.classify]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0642,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_engine_module_imports_standalone[backend.engine.core_loop]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.5674,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_engine_module_imports_standalone[backend.engine.decide_action]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.5794,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_engine_module_imports_standalone[backend.engine.deliver_message]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0635,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_engine_module_imports_standalone[backend.engine.dispatch_scheduled]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.5582,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_engine_module_imports_standalone[backend.engine.execute_action]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.5544,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_engine_module_imports_standalone[backend.engine.handle_customer_reply]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.5645,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_engine_module_imports_standalone[backend.engine.intervention_cost]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0493,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_engine_module_imports_standalone[backend.engine.mark_opportunity_recovered]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0831,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_engine_module_imports_standalone[backend.engine.observe_outcome]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.091,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_engine_module_imports_standalone[backend.engine.opportunity_lock]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0455,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_engine_module_imports_standalone[backend.engine.optimize]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.6201,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_engine_module_imports_standalone[backend.engine.optimizer_config]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.053,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_engine_module_imports_standalone[backend.engine.phase5_config]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.5539,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_engine_module_imports_standalone[backend.engine.phase6_config]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.0727,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_engine_module_imports_standalone[backend.engine.pipeline]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.5634,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_every_engine_module_imports_standalone[backend.engine.trigger_event]",
+          "gate": "permanent.import_hygiene",
+          "outcome": "passed",
+          "duration_s": 0.589,
+          "longrepr": null
+        }
+      ]
+    },
+    "permanent.no_silent_failures": {
+      "verdict": "NOT COMPLETE",
+      "tests": [
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_no_bare_except_clause",
+          "gate": "permanent.no_silent_failures",
+          "outcome": "passed",
+          "duration_s": 0.6405,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_no_broad_handler_discards_the_failure_silently",
+          "gate": "permanent.no_silent_failures",
+          "outcome": "failed",
+          "duration_s": 0.4571,
+          "longrepr": "source_files = [WindowsPath('C:/Users/gaura/Downloads/CODING/Projects/professional/razorpay_hackathon_aug_26/backend/__init__.py'), W...wsPath('C:/Users/gaura/Downloads/CODING/Projects/professional/razorpay_hackathon_aug_26/backend/api/__init__.py'), ...]\n\n    \u001b[0m\u001b[37m@pytest\u001b[39;49;00m.mark.gate(\u001b[33m\"\u001b[39;49;00m\u001b[33mpermanent.no_silent_failures\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m)\u001b[90m\u001b[39;49;00m\n    \u001b[94mdef\u001b[39;49;00m\u001b[90m \u001b[39;49;00m\u001b[92mtest_no_broad_handler_discards_the_failure_silently\u001b[39;49;00m(source_files):\u001b[90m\u001b[39;49;00m\n    \u001b[90m    \u001b[39;49;00m\u001b[33m\"\"\"\u001b[39;49;00m\n    \u001b[33m    Permanent gate: no silent failures, no swallowed exceptions.\u001b[39;49;00m\n    \u001b[33m\u001b[39;49;00m\n    \u001b[33m    EXPECTED TO FAIL against the Phase 1 hand-off, and left failing on\u001b[39;49;00m\n    \u001b[33m    purpose: `_load_ml_model` and `_get_recovery_probability` catch every\u001b[39;49;00m\n    \u001b[33m    exception and return None with no log line and no signal to the caller.\u001b[39;49;00m\n    \u001b[33m\u001b[39;49;00m\n    \u001b[33m    The consequence is not cosmetic. A missing or corrupt xgb_model.joblib,\u001b[39;49;00m\n    \u001b[33m    a joblib/scikit-learn version mismatch, or a train/serve feature-contract\u001b[39;49;00m\n    \u001b[33m    break all degrade every decision to ml_recovery_probability=None while\u001b[39;49;00m\n    \u001b[33m    the batch run still reports success -- and Phase 4's ranking consumes\u001b[39;49;00m\n    \u001b[33m    that same value. Per the gate document this is NOT COMPLETE rather than\u001b[39;49;00m\n    \u001b[33m    something to relax the test for.\u001b[39;49;00m\n    \u001b[33m    \"\"\"\u001b[39;49;00m\u001b[90m\u001b[39;49;00m\n        silent = [h \u001b[94mfor\u001b[39;49;00m h \u001b[95min\u001b[39;49;00m _broad_handler_inventory(source_files) \u001b[94mif\u001b[39;49;00m h[\u001b[33m\"\u001b[39;49;00m\u001b[33msilent\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m]]\u001b[90m\u001b[39;49;00m\n        detail = \u001b[33m\"\u001b[39;49;00m\u001b[33m\\n\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m.join(\u001b[90m\u001b[39;49;00m\n            \u001b[33mf\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[33m  \u001b[39;49;00m\u001b[33m{\u001b[39;49;00mh[\u001b[33m'\u001b[39;49;00m\u001b[33mfile\u001b[39;49;00m\u001b[33m'\u001b[39;49;00m]\u001b[33m}\u001b[39;49;00m\u001b[33m:\u001b[39;49;00m\u001b[33m{\u001b[39;49;00mh[\u001b[33m'\u001b[39;49;00m\u001b[33mlineno\u001b[39;49;00m\u001b[33m'\u001b[39;49;00m]\u001b[33m}\u001b[39;49;00m\u001b[33m in \u001b[39;49;00m\u001b[33m{\u001b[39;49;00mh[\u001b[33m'\u001b[39;49;00m\u001b[33mfunction\u001b[39;49;00m\u001b[33m'\u001b[39;49;00m]\u001b[33m}\u001b[39;49;00m\u001b[33m()\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[90m\u001b[39;49;00m\n            \u001b[33mf\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[33m  [\u001b[39;49;00m\u001b[33m{\u001b[39;49;00m\u001b[33m'\u001b[39;49;00m\u001b[33mknown Phase 1 finding\u001b[39;49;00m\u001b[33m'\u001b[39;49;00m\u001b[90m \u001b[39;49;00m\u001b[94mif\u001b[39;49;00m\u001b[90m \u001b[39;49;00m(h[\u001b[33m'\u001b[39;49;00m\u001b[33mfile\u001b[39;49;00m\u001b[33m'\u001b[39;49;00m],\u001b[90m \u001b[39;49;00mh[\u001b[33m'\u001b[39;49;00m\u001b[33mfunction\u001b[39;49;00m\u001b[33m'\u001b[39;49;00m])\u001b[90m \u001b[39;49;00m\u001b[95min\u001b[39;49;00m\u001b[90m \u001b[39;49;00mKNOWN_SILENT_SWALLOWS\u001b[90m \u001b[39;49;00m\u001b[94melse\u001b[39;49;00m\u001b[90m \u001b[39;49;00m\u001b[33m'\u001b[39;49;00m\u001b[33mNEW REGRESSION\u001b[39;49;00m\u001b[33m'\u001b[39;49;00m\u001b[33m}\u001b[39;49;00m\u001b[33m]\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[90m\u001b[39;49;00m\n            \u001b[94mfor\u001b[39;49;00m h \u001b[95min\u001b[39;49;00m silent\u001b[90m\u001b[39;49;00m\n        )\u001b[90m\u001b[39;49;00m\n>       \u001b[94massert\u001b[39;49;00m \u001b[95mnot\u001b[39;49;00m silent, (\u001b[90m\u001b[39;49;00m\n            \u001b[33mf\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[33m{\u001b[39;49;00m\u001b[96mlen\u001b[39;49;00m(silent)\u001b[33m}\u001b[39;49;00m\u001b[33m broad exception handler(s) neither log, re-raise, nor \u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[90m\u001b[39;49;00m\n            \u001b[33mf\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[33mreturn an error signal:\u001b[39;49;00m\u001b[33m\\n\u001b[39;49;00m\u001b[33m{\u001b[39;49;00mdetail\u001b[33m}\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[90m\u001b[39;49;00m\n        )\u001b[90m\u001b[39;49;00m\n\u001b[1m\u001b[31mE       AssertionError: 4 broad exception handler(s) neither log, re-raise, nor return an error signal:\u001b[0m\n\u001b[1m\u001b[31mE           backend/data_factory/validators.py:100 in reproducibility_check()  [NEW REGRESSION]\u001b[0m\n\u001b[1m\u001b[31mE           backend/engine/decide_action.py:132 in _load_ml_model()  [known Phase 1 finding]\u001b[0m\n\u001b[1m\u001b[31mE           backend/engine/decide_action.py:211 in _get_recovery_probability()  [known Phase 1 finding]\u001b[0m\n\u001b[1m\u001b[31mE           backend/ml/inference.py:54 in _load_model()  [NE"
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_no_new_silent_swallow_beyond_the_recorded_findings",
+          "gate": "permanent.no_silent_failures",
+          "outcome": "failed",
+          "duration_s": 0.4783,
+          "longrepr": "source_files = [WindowsPath('C:/Users/gaura/Downloads/CODING/Projects/professional/razorpay_hackathon_aug_26/backend/__init__.py'), W...wsPath('C:/Users/gaura/Downloads/CODING/Projects/professional/razorpay_hackathon_aug_26/backend/api/__init__.py'), ...]\n\n    \u001b[0m\u001b[37m@pytest\u001b[39;49;00m.mark.gate(\u001b[33m\"\u001b[39;49;00m\u001b[33mpermanent.no_silent_failures\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m)\u001b[90m\u001b[39;49;00m\n    \u001b[94mdef\u001b[39;49;00m\u001b[90m \u001b[39;49;00m\u001b[92mtest_no_new_silent_swallow_beyond_the_recorded_findings\u001b[39;49;00m(source_files):\u001b[90m\u001b[39;49;00m\n    \u001b[90m    \u001b[39;49;00m\u001b[33m\"\"\"\u001b[39;49;00m\n    \u001b[33m    Companion to the test above: that one stays red until the two known sites\u001b[39;49;00m\n    \u001b[33m    are fixed, so on its own it cannot detect a *third* site being added.\u001b[39;49;00m\n    \u001b[33m    This one can -- it is the regression guard that must stay green.\u001b[39;49;00m\n    \u001b[33m    \"\"\"\u001b[39;49;00m\u001b[90m\u001b[39;49;00m\n        new = [\u001b[33mf\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[33m{\u001b[39;49;00mh[\u001b[33m'\u001b[39;49;00m\u001b[33mfile\u001b[39;49;00m\u001b[33m'\u001b[39;49;00m]\u001b[33m}\u001b[39;49;00m\u001b[33m:\u001b[39;49;00m\u001b[33m{\u001b[39;49;00mh[\u001b[33m'\u001b[39;49;00m\u001b[33mlineno\u001b[39;49;00m\u001b[33m'\u001b[39;49;00m]\u001b[33m}\u001b[39;49;00m\u001b[33m in \u001b[39;49;00m\u001b[33m{\u001b[39;49;00mh[\u001b[33m'\u001b[39;49;00m\u001b[33mfunction\u001b[39;49;00m\u001b[33m'\u001b[39;49;00m]\u001b[33m}\u001b[39;49;00m\u001b[33m()\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[90m\u001b[39;49;00m\n               \u001b[94mfor\u001b[39;49;00m h \u001b[95min\u001b[39;49;00m _broad_handler_inventory(source_files)\u001b[90m\u001b[39;49;00m\n               \u001b[94mif\u001b[39;49;00m h[\u001b[33m\"\u001b[39;49;00m\u001b[33msilent\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m] \u001b[95mand\u001b[39;49;00m (h[\u001b[33m\"\u001b[39;49;00m\u001b[33mfile\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m], h[\u001b[33m\"\u001b[39;49;00m\u001b[33mfunction\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m]) \u001b[95mnot\u001b[39;49;00m \u001b[95min\u001b[39;49;00m KNOWN_SILENT_SWALLOWS]\u001b[90m\u001b[39;49;00m\n>       \u001b[94massert\u001b[39;49;00m \u001b[95mnot\u001b[39;49;00m new, \u001b[33m\"\u001b[39;49;00m\u001b[33mnewly introduced silent exception swallowing:\u001b[39;49;00m\u001b[33m\\n\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m + \u001b[33m\"\u001b[39;49;00m\u001b[33m\\n\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m.join(new)\u001b[90m\u001b[39;49;00m\n\u001b[1m\u001b[31mE       AssertionError: newly introduced silent exception swallowing:\u001b[0m\n\u001b[1m\u001b[31mE         backend/data_factory/validators.py:100 in reproducibility_check()\u001b[0m\n\u001b[1m\u001b[31mE         backend/ml/inference.py:54 in _load_model()\u001b[0m\n\u001b[1m\u001b[31mE       assert not ['backend/data_factory/validators.py:100 in reproducibility_check()', 'backend/ml/inference.py:54 in _load_model()']\u001b[0m\n\n\u001b[1m\u001b[31mbackend\\tests\\test_permanent_gates.py\u001b[0m:305: AssertionError"
+        }
+      ]
+    },
+    "permanent.single_authority": {
+      "verdict": "NOT COMPLETE",
+      "tests": [
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_only_the_rule_engine_grants_allowed",
+          "gate": "permanent.single_authority",
+          "outcome": "passed",
+          "duration_s": 0.0795,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_method_change_has_no_reachable_executor_path",
+          "gate": "permanent.single_authority",
+          "outcome": "failed",
+          "duration_s": 0.5132,
+          "longrepr": "source_files = [WindowsPath('C:/Users/gaura/Downloads/CODING/Projects/professional/razorpay_hackathon_aug_26/backend/__init__.py'), W...wsPath('C:/Users/gaura/Downloads/CODING/Projects/professional/razorpay_hackathon_aug_26/backend/api/__init__.py'), ...]\n\n    \u001b[0m\u001b[37m@pytest\u001b[39;49;00m.mark.gate(\u001b[33m\"\u001b[39;49;00m\u001b[33mpermanent.single_authority\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m)\u001b[90m\u001b[39;49;00m\n    \u001b[94mdef\u001b[39;49;00m\u001b[90m \u001b[39;49;00m\u001b[92mtest_method_change_has_no_reachable_executor_path\u001b[39;49;00m(source_files):\u001b[90m\u001b[39;49;00m\n    \u001b[90m    \u001b[39;49;00m\u001b[33m\"\"\"\u001b[39;49;00m\n    \u001b[33m    method_change is deliberately outside the executable action set: no code\u001b[39;49;00m\n    \u001b[33m    path may select it, map it to a status, or execute it. A live branch\u001b[39;49;00m\n    \u001b[33m    would let the system mutate a customer's payment instrument -- an\u001b[39;49;00m\n    \u001b[33m    authority nobody granted it. Comments and docstrings are excluded,\u001b[39;49;00m\n    \u001b[33m    since the boundary is allowed to be *documented*, only not implemented.\u001b[39;49;00m\n    \u001b[33m\u001b[39;49;00m\n    \u001b[33m    AMENDED 2026-09-04 (Phase 5, W7 / ruling A10). The match was a plain\u001b[39;49;00m\n    \u001b[33m    substring test, so it flagged the legitimate `\"method_changed\"` feature\u001b[39;49;00m\n    \u001b[33m    key -- the generator's flag for \"this candidate carries a different\u001b[39;49;00m\n    \u001b[33m    payment method\" -- in data_factory/ and ml/. 14 false-positive offenders,\u001b[39;49;00m\n    \u001b[33m    every one of them a feature name, none of them an action.\u001b[39;49;00m\n    \u001b[33m\u001b[39;49;00m\n    \u001b[33m    Tightened to a word-boundary match. This is a correction of a broken\u001b[39;49;00m\n    \u001b[33m    matcher, NOT a loosened bar: `(?<![0-9A-Za-z_])method_change(?![0-9A-Za-z_])`\u001b[39;49;00m\n    \u001b[33m    still flags any real `method_change` token and now correctly ignores\u001b[39;49;00m\n    \u001b[33m    `method_changed` (trailing `d`) and `_is_method_change` (leading `_`).\u001b[39;49;00m\n    \u001b[33m\u001b[39;49;00m\n    \u001b[33m    READ THIS BEFORE TRUSTING A PASS. Even tightened, this test proves very\u001b[39;49;00m\n    \u001b[33m    little, because **there is no `method_change` action type in this system\u001b[39;49;00m\n    \u001b[33m    at all** -- the token it searches for structurally cannot appear. A\u001b[39;49;00m\n    \u001b[33m    method change is `action_type=\"retry\"` carrying a `method` different from\u001b[39;49;00m\n    \u001b[33m    the opportunity's current one, so the boundary is a property of the\u001b[39;49;00m\n    \u001b[33m    (action, method) pair and no string search can establish it. It is\u001b[39;49;00m\n    \u001b[33m    retained only as a cheap tripwire against someone introducing such a\u001b[39;49;00m\n    \u001b[33m    token. The boundary is verified for real by the behavioural and\u001b[39;49;00m\n    \u001b[33m    structural tests in tests/test_phase5_fallthrough.py, by\u001b[39;49;00m\n    \u001b[33m    phase5_config.METHOD_CHANGE_IS_EXECUTABLE's import-time raise, and by\u001b[39;49;00m\n    \u001b[33m    test_the_dispatcher_cannot_fire_a_method_change in\u001b[39;49;00m\n    \u001b[33m    tests/test_phase5_dispatch.py. See PHASE5_NOTES.md section 0.1.\u001b[39;49;00m\n    \u001b[33m    \"\"\"\u001b[39;49;00m\u001b[90m\u001b[39;49;00m\n        token = re.compile(\u001b[33mr\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m\u001b[33m(?<![0-9A-Za-z_])method_change(?![0-9A-Za-z_])\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m)\u001b[90m\u001b[39;49;00m\n        offenders = []\u001b[90m\u001b[39;49;00m\n        \u001b[94mfor\u001b[39;49;00m path \u001b[95min\u001b[39;49;00m source_files:\u001b[90m\u001b[39;49;00m\n            tree = ast.parse(path.read_text(encoding=\u001b[33m\"\u001b[39;49;00m\u001b[33mutf-8\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m, errors=\u001b[33m\"\u001b[39;49;00m\u001b[33mreplace\u001b[39;49;00m\u001b[33m\"\u001b[39;49;00m), \u001b[96mstr\u001b[39;49;00m(path))\u001b[90m\u001b[39;49;00m\n            docstrings = {\u001b[96mid\u001b[39;49;00m(ast.get_docstring(n, clean=\u001b[94mFalse\u001b[39;49;00m))\u001b[90m\u001b[39;49;00m\n                          \u001b[94mfor\u001b[39;49;00m n \u001b[95min\u001b[39;49;00m ast.walk(tree)\u001b[90m\u001b[39;49;00m\n                          \u001b[94mif\u001b[39;49;00m \u001b[96misinstance\u001b[39;49;00m(n, (ast.Module, ast.ClassDef,\u001b[90m\u001b[39;49;00m\n                                            ast.FunctionDef, ast.AsyncFunctionDef))}\u001b[90m\u001b[39;49"
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_executor_action_set_matches_the_decider",
+          "gate": "permanent.single_authority",
+          "outcome": "passed",
+          "duration_s": 0.0006,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_optimizer_modules_exist_where_the_authority_check_expects_them",
+          "gate": "permanent.single_authority",
+          "outcome": "passed",
+          "duration_s": 0.0033,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_optimizer_imports_nothing_with_execution_authority",
+          "gate": "permanent.single_authority",
+          "outcome": "passed",
+          "duration_s": 0.0204,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_optimizer_writes_only_the_audit_table",
+          "gate": "permanent.single_authority",
+          "outcome": "passed",
+          "duration_s": 0.0117,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_optimizer_never_grants_the_permission_bit",
+          "gate": "permanent.single_authority",
+          "outcome": "passed",
+          "duration_s": 0.0087,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_optimizer_does_not_open_a_second_scoring_path",
+          "gate": "permanent.single_authority",
+          "outcome": "passed",
+          "duration_s": 0.0209,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_phase6_modules_exist_where_the_authority_check_expects_them",
+          "gate": "permanent.single_authority",
+          "outcome": "passed",
+          "duration_s": 0.001,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_phase6_modules_import_nothing_with_execution_authority",
+          "gate": "permanent.single_authority",
+          "outcome": "passed",
+          "duration_s": 0.0076,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_phase6_modules_write_only_their_declared_table",
+          "gate": "permanent.single_authority",
+          "outcome": "passed",
+          "duration_s": 0.0087,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_the_assigner_can_never_write_a_business_outcome",
+          "gate": "permanent.single_authority",
+          "outcome": "passed",
+          "duration_s": 0.0015,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_only_the_creation_entry_point_assigns_an_experiment_group",
+          "gate": "permanent.single_authority",
+          "outcome": "passed",
+          "duration_s": 0.0134,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_exactly_one_module_writes_a_business_outcome",
+          "gate": "permanent.single_authority",
+          "outcome": "passed",
+          "duration_s": 0.4497,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_the_outcome_writer_exists_where_the_check_expects_it",
+          "gate": "permanent.single_authority",
+          "outcome": "passed",
+          "duration_s": 0.0011,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_permanent_gates.py::test_the_outcome_writer_is_not_experiment_aware",
+          "gate": "permanent.single_authority",
+          "outcome": "passed",
+          "duration_s": 0.0054,
+          "longrepr": null
+        }
+      ]
+    },
+    "phase6.assignment": {
+      "verdict": "PASS",
+      "tests": [
+        {
+          "nodeid": "tests/test_phase6_assignment.py::test_assignment_records_group_time_and_method",
+          "gate": "phase6.assignment",
+          "outcome": "passed",
+          "duration_s": 0.0032,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_assignment.py::test_the_recorded_group_is_the_one_the_locked_formula_derives",
+          "gate": "phase6.assignment",
+          "outcome": "passed",
+          "duration_s": 0.0742,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_assignment.py::test_the_method_string_is_stored_per_row_not_just_derived",
+          "gate": "phase6.assignment",
+          "outcome": "passed",
+          "duration_s": 0.0099,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_assignment.py::test_a_second_call_is_a_no_op_and_never_re_randomizes",
+          "gate": "phase6.assignment",
+          "outcome": "passed",
+          "duration_s": 0.0107,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_assignment.py::test_the_primary_key_is_the_guarantee_not_the_select",
+          "gate": "phase6.assignment",
+          "outcome": "passed",
+          "duration_s": 0.008,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_assignment.py::test_an_unknown_opportunity_is_not_assigned",
+          "gate": "phase6.assignment",
+          "outcome": "passed",
+          "duration_s": 0.0011,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_assignment.py::test_get_assignment_never_derives_a_group_for_an_unassigned_row",
+          "gate": "phase6.assignment",
+          "outcome": "passed",
+          "duration_s": 0.0065,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_assignment.py::test_trigger_event_assigns_every_opportunity_it_creates",
+          "gate": "phase6.assignment",
+          "outcome": "passed",
+          "duration_s": 0.0166,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_assignment.py::test_assignment_precedes_the_first_decision",
+          "gate": "phase6.assignment",
+          "outcome": "passed",
+          "duration_s": 0.0197,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_assignment.py::test_a_replayed_event_does_not_reassign",
+          "gate": "phase6.assignment",
+          "outcome": "passed",
+          "duration_s": 0.0176,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_assignment.py::test_an_invalid_event_creates_no_assignment",
+          "gate": "phase6.assignment",
+          "outcome": "passed",
+          "duration_s": 0.0009,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_assignment.py::test_both_arms_are_produced_by_real_trigger_event_ids",
+          "gate": "phase6.assignment",
+          "outcome": "passed",
+          "duration_s": 0.0544,
+          "longrepr": null
+        }
+      ]
+    },
+    "phase6.control_suppression": {
+      "verdict": "PASS",
+      "tests": [
+        {
+          "nodeid": "tests/test_phase6_suppression.py::test_a_control_opportunity_is_suppressed",
+          "gate": "phase6.control_suppression",
+          "outcome": "passed",
+          "duration_s": 0.0098,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_suppression.py::test_the_suppression_reason_names_the_assignment_that_caused_it",
+          "gate": "phase6.control_suppression",
+          "outcome": "passed",
+          "duration_s": 0.0096,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_suppression.py::test_the_suppression_outcome_is_in_the_closed_vocabulary",
+          "gate": "phase6.control_suppression",
+          "outcome": "passed",
+          "duration_s": 0.0121,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_suppression.py::test_a_treatment_opportunity_is_untouched",
+          "gate": "phase6.control_suppression",
+          "outcome": "passed",
+          "duration_s": 2.8041,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_suppression.py::test_an_unassigned_opportunity_is_not_suppressed",
+          "gate": "phase6.control_suppression",
+          "outcome": "passed",
+          "duration_s": 0.0187,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_suppression.py::test_suppression_precedes_the_terminal_branches[already_stopped-<lambda>]",
+          "gate": "phase6.control_suppression",
+          "outcome": "passed",
+          "duration_s": 0.0103,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_suppression.py::test_suppression_precedes_the_terminal_branches[already_escalated-<lambda>]",
+          "gate": "phase6.control_suppression",
+          "outcome": "passed",
+          "duration_s": 0.019,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_suppression.py::test_the_gate_is_structurally_first_in_the_function_body",
+          "gate": "phase6.control_suppression",
+          "outcome": "passed",
+          "duration_s": 0.0126,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_suppression.py::test_control_produces_a_decision_row_but_no_execution",
+          "gate": "phase6.control_suppression",
+          "outcome": "passed",
+          "duration_s": 0.0085,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_suppression.py::test_control_opportunity_status_is_not_advanced",
+          "gate": "phase6.control_suppression",
+          "outcome": "passed",
+          "duration_s": 0.0119,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_suppression.py::test_end_to_end_control_gets_no_execution_message_or_candidate",
+          "gate": "phase6.control_suppression",
+          "outcome": "passed",
+          "duration_s": 0.0176,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_suppression.py::test_a_scheduled_action_for_a_control_opportunity_is_abandoned",
+          "gate": "phase6.control_suppression",
+          "outcome": "passed",
+          "duration_s": 0.0275,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_suppression.py::test_the_optimizer_is_not_run_for_a_control_opportunity",
+          "gate": "phase6.control_suppression",
+          "outcome": "passed",
+          "duration_s": 0.0245,
+          "longrepr": null
+        }
+      ]
+    },
+    "phase6.counterfactual_consistency": {
+      "verdict": "PASS",
+      "tests": [
+        {
+          "nodeid": "tests/test_phase6_gates.py::test_counterfactual_consistency_on_a_real_population",
+          "gate": "phase6.counterfactual_consistency",
+          "outcome": "passed",
+          "duration_s": 0.8287,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_gates.py::test_the_gate_fails_when_control_shows_an_executed_action",
+          "gate": "phase6.counterfactual_consistency",
+          "outcome": "passed",
+          "duration_s": 0.5773,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_gates.py::test_a_system_that_acts_on_nobody_does_not_pass",
+          "gate": "phase6.counterfactual_consistency",
+          "outcome": "passed",
+          "duration_s": 0.1014,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_gates.py::test_suppression_that_logged_nothing_does_not_pass",
+          "gate": "phase6.counterfactual_consistency",
+          "outcome": "passed",
+          "duration_s": 0.4574,
+          "longrepr": null
+        }
+      ]
+    },
+    "phase6.declared_bounds": {
+      "verdict": "PASS",
+      "tests": [
+        {
+          "nodeid": "tests/test_phase6_config.py::test_the_lock_file_block_exists_and_is_dated",
+          "gate": "phase6.declared_bounds",
+          "outcome": "passed",
+          "duration_s": 0.0127,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_config.py::test_assignment_parameters_agree_with_the_lock_file",
+          "gate": "phase6.declared_bounds",
+          "outcome": "passed",
+          "duration_s": 0.0002,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_config.py::test_balance_gate_parameters_agree_with_the_lock_file",
+          "gate": "phase6.declared_bounds",
+          "outcome": "passed",
+          "duration_s": 0.0001,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_config.py::test_counterfactual_gate_parameters_agree_with_the_lock_file",
+          "gate": "phase6.declared_bounds",
+          "outcome": "passed",
+          "duration_s": 0.0001,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_config.py::test_the_degenerate_smd_convention_agrees_with_the_lock_file",
+          "gate": "phase6.declared_bounds",
+          "outcome": "passed",
+          "duration_s": 0.0001,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_config.py::test_diagnosis_levels_cover_the_entry_points_accepted_vocabulary",
+          "gate": "phase6.declared_bounds",
+          "outcome": "passed",
+          "duration_s": 0.0042,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_config.py::test_is_payment_failed_is_not_a_duplicate_of_a_diagnosis_level",
+          "gate": "phase6.declared_bounds",
+          "outcome": "passed",
+          "duration_s": 0.0002,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_config.py::test_suppression_outcome_is_in_the_closed_compliance_vocabulary",
+          "gate": "phase6.declared_bounds",
+          "outcome": "passed",
+          "duration_s": 0.0001,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_config.py::test_the_compliance_and_execution_vocabularies_stay_disjoint",
+          "gate": "phase6.declared_bounds",
+          "outcome": "passed",
+          "duration_s": 0.0001,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_config.py::test_resolution_vocabulary_carries_lost_and_not_partially_recovered",
+          "gate": "phase6.declared_bounds",
+          "outcome": "passed",
+          "duration_s": 0.0001,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_config.py::test_outcome_sources_are_a_closed_vocabulary_naming_every_caller",
+          "gate": "phase6.declared_bounds",
+          "outcome": "passed",
+          "duration_s": 0.0001,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_config.py::test_unassigned_opportunities_are_not_suppressed",
+          "gate": "phase6.declared_bounds",
+          "outcome": "passed",
+          "duration_s": 0.0001,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_config.py::test_the_smd_bound_is_the_balance_convention_not_the_effect_size_one",
+          "gate": "phase6.declared_bounds",
+          "outcome": "passed",
+          "duration_s": 0.0001,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_config.py::test_bucketing_is_deterministic_and_salt_dependent",
+          "gate": "phase6.declared_bounds",
+          "outcome": "passed",
+          "duration_s": 0.0031,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_config.py::test_bucketing_is_uniform_enough_to_hit_the_declared_holdout",
+          "gate": "phase6.declared_bounds",
+          "outcome": "passed",
+          "duration_s": 0.0414,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_config.py::test_assignment_method_record_is_self_describing",
+          "gate": "phase6.declared_bounds",
+          "outcome": "passed",
+          "duration_s": 0.0001,
+          "longrepr": null
+        }
+      ]
+    },
+    "phase6.randomization_balance": {
+      "verdict": "PASS",
+      "tests": [
+        {
+          "nodeid": "tests/test_phase6_gates.py::test_randomization_balance_on_a_real_assigned_population",
+          "gate": "phase6.randomization_balance",
+          "outcome": "skipped",
+          "duration_s": 0.0007,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_gates.py::test_the_gate_refuses_to_certify_a_sample_too_small",
+          "gate": "phase6.randomization_balance",
+          "outcome": "passed",
+          "duration_s": 0.2315,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_gates.py::test_an_empty_experiment_is_not_evaluable",
+          "gate": "phase6.randomization_balance",
+          "outcome": "passed",
+          "duration_s": 0.002,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_gates.py::test_the_degenerate_smd_conventions_hold",
+          "gate": "phase6.randomization_balance",
+          "outcome": "passed",
+          "duration_s": 0.0009,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_gates.py::test_unassigned_opportunities_are_excluded_from_the_population",
+          "gate": "phase6.randomization_balance",
+          "outcome": "passed",
+          "duration_s": 0.0067,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_gates.py::test_the_committed_evidence_file_records_both_gates",
+          "gate": "phase6.randomization_balance",
+          "outcome": "passed",
+          "duration_s": 0.0025,
+          "longrepr": null
+        }
+      ]
+    },
+    "phase6.single_ingestion": {
+      "verdict": "PASS",
+      "tests": [
+        {
+          "nodeid": "tests/test_phase6_outcome.py::test_resolution_must_be_in_the_closed_vocabulary",
+          "gate": "phase6.single_ingestion",
+          "outcome": "passed",
+          "duration_s": 0.0047,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_outcome.py::test_source_must_be_in_the_closed_vocabulary",
+          "gate": "phase6.single_ingestion",
+          "outcome": "passed",
+          "duration_s": 0.0067,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_outcome.py::test_source_and_resolution_are_keyword_only",
+          "gate": "phase6.single_ingestion",
+          "outcome": "passed",
+          "duration_s": 0.0052,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_outcome.py::test_a_full_recovery",
+          "gate": "phase6.single_ingestion",
+          "outcome": "passed",
+          "duration_s": 0.006,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_outcome.py::test_a_partial_recovery_is_inferred_not_a_separate_value",
+          "gate": "phase6.single_ingestion",
+          "outcome": "passed",
+          "duration_s": 0.0104,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_outcome.py::test_a_non_recovery_records_zero_not_null[stopped]",
+          "gate": "phase6.single_ingestion",
+          "outcome": "passed",
+          "duration_s": 0.0072,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_outcome.py::test_a_non_recovery_records_zero_not_null[lost]",
+          "gate": "phase6.single_ingestion",
+          "outcome": "passed",
+          "duration_s": 0.0121,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_outcome.py::test_lost_is_not_a_synonym_for_stopped",
+          "gate": "phase6.single_ingestion",
+          "outcome": "passed",
+          "duration_s": 0.0199,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_outcome.py::test_a_resolved_opportunity_is_not_overwritten",
+          "gate": "phase6.single_ingestion",
+          "outcome": "passed",
+          "duration_s": 0.0085,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_outcome.py::test_the_where_clause_is_the_guard_not_the_pre_check",
+          "gate": "phase6.single_ingestion",
+          "outcome": "passed",
+          "duration_s": 0.0076,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_outcome.py::test_an_unknown_opportunity_is_reported_not_invented",
+          "gate": "phase6.single_ingestion",
+          "outcome": "passed",
+          "duration_s": 0.0011,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_outcome.py::test_manual_confirmation_routes_through_and_is_labelled",
+          "gate": "phase6.single_ingestion",
+          "outcome": "passed",
+          "duration_s": 0.0243,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_outcome.py::test_the_manual_utility_preserves_its_legacy_return_shape",
+          "gate": "phase6.single_ingestion",
+          "outcome": "passed",
+          "duration_s": 0.019,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_outcome.py::test_the_executor_stop_routes_through_and_is_labelled",
+          "gate": "phase6.single_ingestion",
+          "outcome": "passed",
+          "duration_s": 0.0054,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_outcome.py::test_a_stop_cannot_overwrite_an_already_recovered_case",
+          "gate": "phase6.single_ingestion",
+          "outcome": "passed",
+          "duration_s": 0.017,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_outcome.py::test_a_control_opportunity_can_still_recover",
+          "gate": "phase6.single_ingestion",
+          "outcome": "passed",
+          "duration_s": 0.0153,
+          "longrepr": null
+        },
+        {
+          "nodeid": "tests/test_phase6_outcome.py::test_the_deleted_legacy_utility_is_gone",
+          "gate": "phase6.single_ingestion",
+          "outcome": "passed",
+          "duration_s": 0.0018,
+          "longrepr": null
+        }
+      ]
+    }
+  }
+}
