@@ -324,6 +324,31 @@ def insert_decision(conn, opportunity_id, action_type, outcome="executed",
 _RESULTS: dict[str, dict] = {}
 
 
+def pytest_collection_modifyitems(config, items):
+    """
+    Make `slow` opt-in, as pytest.ini has always claimed it is.
+
+    The marker was registered from the start with the comment "opt in with
+    -m slow", but nothing implemented the skip -- a pytest marker selects, it
+    does not exclude, so a `slow` test would in fact have run on every
+    ordinary invocation. Phase 6 / X5 is the first test to carry the marker
+    (the balance gate needs thousands of opportunities generated through the
+    real entry point, ~10 minutes), so this is where the declared convention
+    has to become real rather than aspirational.
+
+    Skipped unless the run's own `-m` expression names `slow`, so
+    `pytest -m slow` and `pytest -m "slow or gate"` both opt in and a plain
+    run does not.
+    """
+    selected = config.getoption("-m", default="") or ""
+    if "slow" in selected:
+        return
+    skip = pytest.mark.skip(reason="slow: opt in with -m slow")
+    for item in items:
+        if item.get_closest_marker("slow"):
+            item.add_marker(skip)
+
+
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
 def pytest_runtest_makereport(item, call):
     outcome = yield

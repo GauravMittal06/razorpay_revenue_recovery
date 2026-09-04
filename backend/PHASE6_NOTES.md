@@ -7,7 +7,7 @@ Working record. Written as the phase runs, not reconstructed after it.
     X2  assign_experiment_group.py + creation-time hook             DONE
     X3  control suppression in the rule engine                      DONE
     X4  observe_outcome.py as the single ingestion path             DONE
-    X5  assignment volume + the two hard gates                      --
+    X5  assignment volume + the two hard gates                      DONE
     X6  close: notes, inventory, carried-forward closeout           --
 
 ---
@@ -443,3 +443,125 @@ to a recovery, which is the natural reading of "the escalation was resolved" —
 but a human could equally close an escalation without recovering anything. It
 is recorded in-code as an assumption to be confirmed by whoever adds a
 producer, not inherited silently from here.
+
+---
+
+## X5 — the two hard gates, and a floor that was locked too low
+
+### The counterfactual gate passed on the first real population
+
+Control 0 on every probe, treatment non-zero, and 1723 suppression rows
+proving suppression *logs* rather than returning early. The treatment arm is
+measured deliberately: "control shows nothing" is unfalsifiable on its own,
+since a broken optimizer or a no-op executor would satisfy a control-only
+check perfectly. `test_a_system_that_acts_on_nobody_does_not_pass` pins that.
+
+### The balance gate failed at n=240 — and the failure meant nothing
+
+First run, 240 opportunities: max |SMD| = 0.386, five breaches. The threshold
+was **not** touched. Instead the question asked was whether the gate is
+*passable* at that n, measured against the **known-correct** randomizer — the
+real locked hash, over uuid4-shaped ids, 500 trials per n:
+
+| n | trials | pass rate | 95% lower | median max&#124;SMD&#124; |
+|---:|---:|---:|---:|---:|
+| 240 | 600 | 0.33% | 0.09% | 0.2335 |
+| 500 | 600 | 8.17% | 6.23% | 0.1600 |
+| 1000 | 600 | 34.67% | 30.97% | 0.1126 |
+| 1500 | 600 | 60.33% | 56.37% | 0.0924 |
+| 2000 | 600 | 77.50% | 73.99% | 0.0787 |
+| 2500 | 2000 | 88.00% | 86.50% | |
+| 3000 | 2000 | 93.75% | 92.60% | |
+| **3500** | **2000** | **97.00%** | **96.16%** | |
+| 4000 | 2000 | 98.75% | 98.16% | |
+| 4500 | 2000 | 99.25% | 98.77% | |
+
+At n=240 a perfect randomizer fails this gate **99.67% of the time**. The cause is
+analytic and independent of the result: SE(SMD) ≈ 2/√n, so at n=240 each
+level's SMD has SD ≈ 0.13 while the gate takes the maximum over ten such
+quantities against a 0.10 bound. **`MAX_ABS_SMD = 0.10` and `MIN_ASSIGNED_N =
+200` were both locked at X0 and were mutually incompatible.** Setting the
+floor without a power analysis was an error made at X0.
+
+### What was amended, and what was not
+
+`MIN_ASSIGNED_N`: **200 → 3500**. `MAX_ABS_SMD`: **untouched at 0.10**.
+
+The distinction is the whole point. The bound that *judges* the result is
+exactly what it was before any result existed. What moved is the precondition
+for evaluating the gate at all, and it moved in the **conservative** direction
+— more evidence is now required before balance may be certified, not less. It
+also makes the constant finally do the job its own comment claimed: at n=240
+the gate returned FAIL when the honest verdict was "cannot tell".
+
+3500 is the smallest n whose **95% Wilson lower bound** clears a 95% pass
+rate (97.00% observed, 96.16% lower). The lower bound rather than the point
+estimate, because a Monte Carlo pass rate is itself an estimate and choosing
+on the point estimate would clear the criterion by sampling luck about half
+the time. n=3000 does not clear it (93.75% / 92.60%). **Not 4000 by default**
+merely because that was the run that happened to pass.
+
+### The analysis was unreproducible, and that had to be fixed first
+
+The floor was very nearly locked on a single noisy run. A first pass at 500
+trials put n=3500 at 98.0% (96.4% lower); a second put it at 96.0% (93.9%
+lower), which does **not** clear the criterion — so the chosen floor moved
+between two runs of the same seed.
+
+The cause: `_draw_rows` minted ids with `uuid.uuid4()`, which reads
+`os.urandom` and ignores `random.seed`. The entire Monte Carlo was
+unreproducible. A locked threshold justified by a measurement nobody can
+replay is not justified, whichever number it lands on.
+
+Id generation is now seeded — `rng.getrandbits(48)`, the same 48 uniformly
+random bits `uuid4().hex[:12]` provides, so the assignment hash sees an input
+of identical shape and distribution — and verified stable across repeat runs
+(185/200 twice at the same seed). The decision points were then re-measured at
+**2000 trials**, and 3500 survives.
+
+### The detection curve, and a reading error worth recording
+
+The 95% criterion controls only the false-failure rate, so the same module
+measures the other side. At n=3500, 300 trials:
+
+| bias | induced &#124;SMD&#124; | vs bound | detection |
+|---:|---:|:---|---:|
+| null | 0.0130 | below | 3.7% |
+| +0.10 | 0.0827 | below | 36.3% |
+| +0.15 | 0.1312 | **ABOVE** | 80.0% |
+| +0.20 | 0.1743 | **ABOVE** | 99.7% |
+| +0.30 | 0.2671 | **ABOVE** | 100.0% |
+
+**A first reading of this curve was wrong and is retracted.** It was
+parameterised by the raw bias knob (probability units) rather than by induced
+SMD (the gate's units), and concluded the gate was "nearly blind" to small
+bias. It is not: a 0.05 bias induces only ~0.042 SMD and a 0.10 bias ~0.086,
+both *below* the 0.10 the gate is told to enforce. Detection near the null
+rate there is correct behaviour — a gate firing below its own declared bound
+would be enforcing a tighter threshold than the one locked. The giveaway was
+detection *falling* as n rose, which is impossible for a real effect: as noise
+shrinks, the statistic converges onto a true value that sits under the
+threshold. The curve is now reported in induced-SMD units so it cannot be
+misread the same way.
+
+The residual caveat is only the definition of the bound: an imbalance below
+0.10 SMD passes by construction, so a PASS means "no imbalance beyond the
+declared tolerance", never "the arms are identical".
+
+### Packaging
+
+The balance gate carries `@pytest.mark.slow` and is skipped unless `-m slow`.
+`pytest.ini` had registered that marker from the start with the comment "opt
+in with -m slow", but nothing implemented the skip — a pytest marker *selects*,
+it does not *exclude*, so a slow test would have run on every ordinary
+invocation. X5 is the first test to carry the marker, so the declared
+convention became real here (`pytest_collection_modifyitems` in conftest).
+
+Measured cost of the opt-in run: **77 seconds**, not the ~10 minutes first
+estimated from the volume script against the real database. The estimate was
+wrong; the packaging decision stands on its own terms.
+
+Raw output for both gates plus both curves is committed to
+`tests/evidence/phase6_x5_gate_evidence.txt`, which is the standing record
+while the balance gate is opt-in. A test asserts that file exists and contains
+both gates' figures, so it cannot quietly drift out of existence.

@@ -210,7 +210,76 @@ MAX_ABS_SMD = 0.10
 # Below this many assigned opportunities the gate reports its raw numbers but
 # returns NOT_EVALUABLE rather than PASS. Refusing to certify balance on a
 # sample too small to detect imbalance is the point.
-MIN_ASSIGNED_N = 200
+#
+# AMENDED 2026-09-04 at X5: 200 -> 3500.
+#
+# The original 200 was set without a power analysis and was incompatible with
+# MAX_ABS_SMD = 0.10, which was locked at the same time. SE(SMD) is roughly
+# 2/sqrt(n), so at n=240 each level's SMD has SD ~= 0.13 while the gate takes
+# the maximum over ten such quantities against a 0.10 bound.
+#
+# Measured under the true-random null -- the real locked hash, seeded and
+# reproducible, analytics/balance_power_analysis.py:
+#
+#        n     passed    pass rate   95% lower   median max|SMD|
+#      240    2 / 600        0.33%       0.09%            0.2335
+#      500   49 / 600        8.17%       6.23%            0.1600
+#     1000  208 / 600       34.67%      30.97%            0.1126
+#     1500  362 / 600       60.33%      56.37%            0.0924
+#     2000  465 / 600       77.50%      73.99%            0.0787
+#     2500 1760 / 2000      88.00%      86.50%
+#     3000 1875 / 2000      93.75%      92.60%
+#     3500 1940 / 2000      97.00%      96.16%   <- smallest clearing 95%
+#     4000 1975 / 2000      98.75%      98.16%
+#     4500 1985 / 2000      99.25%      98.77%
+#
+# A correct randomizer fails this gate 99.67% of the time at n=240. Those
+# failures carried no information about the randomizer whatsoever.
+#
+# This is NOT a loosening, and the distinction matters. MAX_ABS_SMD is
+# untouched at 0.10 -- the bound that judges the result is exactly what it was
+# before the result was seen. What changed is the precondition for the gate
+# being evaluated at all, moved in the CONSERVATIVE direction: more evidence
+# is now required before balance may be certified, not less. It also makes
+# this constant finally do the job its own comment claims, since at n=240 the
+# gate returned FAIL when the honest answer was "cannot tell".
+#
+# 3500 is the smallest n whose 95% Wilson LOWER bound clears a 95% pass rate
+# (97.00% observed, 96.16% lower, 2000 trials). The lower bound rather than
+# the point estimate because a Monte Carlo pass rate is itself an estimate:
+# choosing on the point estimate would clear the criterion by sampling luck
+# about half the time. n=3000 does not clear it (93.75% / 92.60%).
+#
+# The trial count is 2000 at the decision points for a reason. A first pass at
+# 500 trials put n=3500 at 98.0% (96.4% lower) and a second at 96.0% (93.9%
+# lower) -- straddling the criterion, so the chosen floor moved between runs.
+# The cause was that `_draw_rows` minted ids with uuid.uuid4(), which reads
+# os.urandom and ignores the seed, making the whole analysis unreproducible. A
+# locked threshold justified by a measurement nobody can replay is not
+# justified, so id generation is now seeded (same 48-bit shape and
+# distribution) and the estimate is stable to repeat runs.
+#
+# The 95% criterion controls the FALSE-FAILURE rate only, so the same module
+# measures the other side: how often the gate fires on an assigner that IS
+# biased. At n=3500, 300 trials, reported against the imbalance each bias
+# actually induces:
+#
+#     induced |SMD|   vs bound   detection
+#            0.0130      below        3.7%   (the null rate)
+#            0.0827      below       36.3%
+#            0.1312      ABOVE       80.0%
+#            0.1743      ABOVE       99.7%
+#            0.2671      ABOVE      100.0%
+#
+# Read that in the induced-|SMD| column. Detection near the null rate BELOW
+# the bound is correct behaviour, not a blind spot -- a gate that fired there
+# would be enforcing a tighter threshold than the one locked. Above the bound
+# it rises sharply and saturates.
+#
+# The residual caveat is only the definition of the bound itself: an imbalance
+# smaller than 0.10 SMD passes by construction, so a PASS means "no imbalance
+# beyond the declared tolerance", not "the arms are identical".
+MIN_ASSIGNED_N = 3500
 
 # Continuous covariates. SMD = (mean_t - mean_c) / sqrt((s_t^2 + s_c^2) / 2),
 # with s the sample standard deviation (ddof=1).
