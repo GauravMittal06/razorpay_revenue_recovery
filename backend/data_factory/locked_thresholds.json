@@ -172,5 +172,68 @@
     "min_test_cases": 30,
     "required_coverage": "must include do_nothing, at least one method_change candidate, at least one null / missing network-health case, at least one row per event_type, and at least one row per root_cause_effect_class",
     "_rationale": "Same fitted pipeline + same deterministic feature construction -> identical output. Any non-zero difference is a real train/serve divergence bug (the exact risk this gate exists for -- execution plan risk table: 'a model trained with a feature the live serving path does not supply'), not tolerable noise, so the tolerance is 0."
+  },
+
+  "phase6_experiment_assignment": {
+    "_locked_at_utc": "2026-09-04T00:00:00Z",
+    "description": "Live experiment assignment: the randomization method, the holdout fraction, and the randomization-balance gate that decides whether any downstream incremental-Rs number is trustworthy. HARD gate. Locked at Phase 6 checkpoint X0, before assign_experiment_group.py existed and before a single opportunity had been assigned.",
+    "_mirrors": "backend/engine/phase6_config.py, which is the executable source of truth. This block is the dated, human-auditable record; phase6_config._check() and tests/test_phase6_config.py assert the two agree.",
+
+    "assignment_method": "hash_blake2b_v1",
+    "assignment_salt": "phase6-experiment-assignment-2026-09-04",
+    "assignment_formula": "bucket = int.from_bytes(blake2b((salt + ':' + opportunity_id).encode('utf-8'), digest_size=8).digest(), 'big') / 2**64; group = 'control' if bucket < holdout_fraction else 'treatment'",
+    "_assignment_rationale": "Ruling 2026-09-04: option R2, hash bucketing, over R4 stratified/blocked randomization. Independence from every covariate is STRUCTURAL rather than empirical -- opportunity_id is uuid4-derived and minted before any covariate is read, so hashing it cannot induce a correlation. Reproducible (any row's group recomputable from id + salt), stateless (correct under concurrency, unlike a seeded RNG sequence whose result depends on call order), and idempotent (a retry cannot re-randomize a live opportunity). R4 declined as premature: if the balance gate below actually fails at X5, escalating to stratification is the documented response, with that failure as its evidence.",
+
+    "holdout_fraction": 0.5,
+    "_holdout_rationale": "Ruling 2026-09-04: 0.5, revised up from a proposed 0.20. Chosen for statistical power, not demo realism. The usual reason to keep a holdout small -- every control opportunity is revenue deliberately left unrecovered -- does not apply to a synthetic system where no real money is sacrificed. Against the reconciled seeded population (150 opportunities, of which 51 are already terminal, 92 in flight, 7 escalated-pending), an even split is the only allocation giving the balance gate a usable control arm at achievable volume.",
+    "min_assigned_n": 200,
+    "_min_assigned_n_rationale": "Below this the gate reports its raw numbers but returns NOT_EVALUABLE rather than PASS. Refusing to certify balance on a sample too small to detect imbalance is the entire point of the gate.",
+
+    "max_abs_smd": 0.10,
+    "_smd_bound_rationale": "The covariate-balance convention: SMD < 0.10 is negligible imbalance. This is NOT Cohen's 0.20, which is a small-EFFECT-SIZE convention for a different construct. An earlier draft of this plan proposed 0.20 by conflating the two; the error was diagnosed and corrected on 2026-09-04 BEFORE anything was locked and before any balance result had been computed, so this is a pre-lock correction and not a threshold moved to obtain a pass.",
+
+    "continuous_covariates": ["amount_at_risk"],
+    "continuous_smd_formula": "(mean_t - mean_c) / sqrt((s_t^2 + s_c^2) / 2), s = sample standard deviation with ddof=1",
+
+    "categorical_covariates": {
+      "diagnosis": {
+        "definition": "root_cause when event_type = 'payment_failed', else event_type",
+        "levels_source": "backend.engine.trigger_event.VALID_ROOT_CAUSES + (VALID_EVENT_TYPES - {payment_failed})",
+        "levels": ["insufficient_funds", "payment_declined", "gateway_timeout", "authentication_failed", "expired_card", "network_error", "checkout_abandoned", "invoice_overdue"],
+        "_rationale": "Replaces a root_cause covariate carrying a NULL level. Verified 2026-09-04 against the seeded population: root_cause IS NULL exactly when event_type != 'payment_failed' (54 checkout_abandoned + 32 invoice_overdue = 86 of 150, zero exceptions). A NULL level is therefore perfectly collinear with event_type, and lumping 86 rows into it would be blind to a checkout_abandoned/invoice_overdue split -- an imbalance this 8-level form detects and the 7-level form scores as exactly 0."
+      },
+      "is_payment_failed": {
+        "definition": "'yes' when event_type = 'payment_failed', else 'no'",
+        "levels": ["yes", "no"],
+        "_rationale": "NOT redundant with diagnosis, and the one deliberate overlap between covariates. Per-level balance on a partition does not imply balance on a coarsening of it: six root-cause levels each off by +0.03 in the same direction every one clear the 0.10 bound individually while their union is off by 0.18. diagnosis cannot see that; this binary can. The two GENUINELY redundant levels of the original event_type covariate -- checkout_abandoned and invoice_overdue, identical partitions in both covariates -- were dropped rather than gated twice."
+      }
+    },
+    "categorical_smd_formula": "per level k, with p the within-arm proportion of that level: (p_t - p_c) / sqrt((p_t(1 - p_t) + p_c(1 - p_c)) / 2)",
+    "categorical_gate": "max over gate-eligible levels of |SMD_k| < max_abs_smd. Identical to requiring every eligible level to clear it -- max < x and forall < x are the same proposition at every n, by the definition of max. No multiplicity correction applies: SMD is a descriptive bound, not a hypothesis test, so there is no family-wise error rate to inflate.",
+
+    "degenerate_smd_convention": {
+      "zero_denominator_zero_numerator": 0.0,
+      "zero_denominator_nonzero_numerator": "+inf -> FAIL",
+      "_rationale": "The denominator vanishes only when both arms' proportions are 0 or 1. Both cases get an explicit value rather than a ZeroDivisionError or a silent nan, which would compare False against every bound and pass. A level present in one arm and absent from the other is maximal imbalance and must fail, never be swallowed as 'undefined'."
+    },
+
+    "min_expected_arm_count": 5,
+    "level_eligibility_rule": "a categorical level enters the gate only when min(h, 1 - h) * n_level >= min_expected_arm_count, with h = holdout_fraction and n_level the level's total across both arms",
+    "_eligibility_rationale": "The classic >=5 expected-cell-count rule, applied to the arm that actually drives the estimate's noise. Written holdout-aware rather than as a raw count so it stays correct if holdout_fraction is ever amended.",
+    "max_excluded_coverage": 0.20,
+    "excluded_level_handling": "each excluded level is reported with its raw per-arm counts and labelled EXCLUDED_UNDERPOWERED; if excluded levels together cover more than max_excluded_coverage of the assigned population the gate reports NOT_EVALUABLE, never PASS",
+    "_coverage_guard_rationale": "Without this, exclusion becomes a way to manufacture a pass: clear the two largest levels, drop the other six as underpowered, declare balance.",
+
+    "reporting_requirement": "The gate reports RAW NUMBERS, never a bare verdict: n per arm, mean/median/sd of amount_at_risk per arm, the full level x arm contingency table, and every level's signed SMD including excluded ones. The verdict is derived from those figures in the report and never substituted for them."
+  },
+
+  "phase6_counterfactual_consistency": {
+    "_locked_at_utc": "2026-09-04T00:00:00Z",
+    "description": "Control suppression is verifiably real rather than cosmetic. HARD gate. Locked at X0, before the suppression code existed.",
+    "control_expected_count": 0,
+    "treatment_min_count": 1,
+    "control_probes": ["recovery_candidates.selected = 1", "recovery_decisions.outcome = 'executed' at or after assigned_at", "recovery_executions.state IN ('dispatched','executed') at or after assigned_at", "messages.sender = 'system' at or after assigned_at"],
+    "_rationale": "Every probe count is reported raw. The gate requires all-zero on the control arm AND non-zero on the treatment arm: without the second half 'control shows nothing' is unfalsifiable, since a system that acts on nobody at all would pass it.",
+    "reporting_requirement": "raw per-probe counts for both arms, never a bare verdict"
   }
 }

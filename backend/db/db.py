@@ -42,6 +42,13 @@ DATA_DIR = BASE_DIR / "data"
 # decision already recorded at STATE_AND_DECISIONS.md:109-111. Full analysis,
 # including why adding the branch instead would leave opportunities unclosed
 # and reprocessed on every cycle, is in backend/PHASE5_NOTES.md section 1.
+# Phase 6 / X0, 2026-09-04, adds `suppressed_holdout`: the opportunity is in
+# the randomized control arm, so no automated intervention may be selected for
+# it. It is a compliance verdict -- a permission withheld for a declared
+# reason -- which is what makes this the right vocabulary for it rather than
+# an execution state or a silent skip. The permanent invariant that every
+# action the system takes OR DECLINES TO TAKE is logged with a reason is why
+# a suppression writes a decision row at all instead of returning early.
 DECISION_OUTCOMES = (
     "executed",
     "blocked_cooldown",
@@ -49,6 +56,43 @@ DECISION_OUTCOMES = (
     "blocked_already_escalated",
     "blocked_already_stopped",
     "flagged_manual_review",
+    "suppressed_holdout",
+)
+
+# Closed vocabulary for opportunities.resolution_type -- how a case ended.
+#
+# Declared for the first time in Phase 6 / X0. Phase 1 shipped this as a
+# comment on the column, which no test could assert against and which had
+# already drifted: the comment named `escalated_resolved`, a value no code
+# path has ever written.
+#
+# `lost` is added here (ruling 2026-09-04) and is NOT a synonym for `stopped`.
+# `stopped` is a POLICY resolution -- the engine exhausted its attempts and
+# closed the case by rule. `lost` is an OBSERVED FACT about the world -- the
+# money is definitively gone. Collapsing them would make "how much did we
+# actually fail to recover" unanswerable, which is the question Phase 7 exists
+# to answer.
+#
+# There is deliberately no `partially_recovered` member: a partial recovery is
+# `recovered` with partial_recovery_amount < amount_at_risk, and adding a
+# second value would force every "was this recovered" query to match two.
+RESOLUTION_TYPES = (
+    "recovered",
+    "stopped",
+    "escalated_resolved",
+    "lost",
+)
+
+# Closed vocabulary for opportunities.outcome_source -- which caller drove an
+# observed outcome through the single ingestion path.
+#
+# Phase 6 makes observe_outcome() the sole writer of the business-outcome
+# fields. "Exactly one path" is true but unauditable unless the data records
+# which caller used it, which is what this column is for.
+OUTCOME_SOURCES = (
+    "manual_confirmation",   # the operator utility, retained for demo/testing
+    "executor_stop",         # the attempt ceiling closing a case by policy
+    "payment_event",         # a real upstream payment-success event
 )
 
 # Closed state vocabulary for recovery_executions.state.
@@ -91,7 +135,13 @@ CREATE TABLE IF NOT EXISTS opportunities (
     partial_recovery_amount INTEGER,
     recovered_at INTEGER,
     time_to_recovery INTEGER,       -- seconds, derived: recovered_at - created_at
-    resolution_type TEXT,           -- recovered | stopped | escalated_resolved | NULL if still open
+    resolution_type TEXT,           -- one of RESOLUTION_TYPES; NULL if still open
+    -- Phase 6 / X0, ruling A7. Which caller drove the observed outcome
+    -- through observe_outcome(), the single ingestion path. One of
+    -- OUTCOME_SOURCES; NULL for a row whose outcome predates Phase 6 or
+    -- which has no outcome yet. See ADDITIVE_COLUMNS below -- this column
+    -- must reach databases created before it existed.
+    outcome_source TEXT,
     -- Idempotency key for event ingestion (nullable -- Live Agent Console
     -- manual triggers have no upstream event id to dedupe against; only
     -- delivered events that carry one can be deduplicated). UNIQUE via the
@@ -331,6 +381,8 @@ def get_connection():
 ADDITIVE_COLUMNS = (
     # Phase 5 / W6, ruling A6, 2026-09-03.
     ("recovery_executions", "state_reason", "TEXT"),
+    # Phase 6 / X0, ruling A7, 2026-09-04.
+    ("opportunities", "outcome_source", "TEXT"),
 )
 
 
