@@ -8,7 +8,7 @@ Working record. Written as the phase runs, not reconstructed after it.
     X3  control suppression in the rule engine                      DONE
     X4  observe_outcome.py as the single ingestion path             DONE
     X5  assignment volume + the two hard gates                      DONE
-    X6  close: notes, inventory, carried-forward closeout           --
+    X6  close: notes, inventory, carried-forward closeout           DONE
 
 ---
 
@@ -33,7 +33,7 @@ Working record. Written as the phase runs, not reconstructed after it.
 | C4 | The first `opportunity_lock` hold in any process is ~780 ms, not ~6 ms, because `decide_action()` loads the ML model lazily inside the lock. | **OPEN**, inherited. Phase 6 adds a suppression branch that returns *before* `_load_ml_model()` for control opportunities, which narrows but does not close this: treatment opportunities still pay it. Not claimed as a fix. | 2026-09-04 |
 | C5 | `test_method_change_has_no_reachable_executor_path` fails with 2 offenders, both display labels in an offline Phase 3 evaluation script with no executor path. | **OPEN by ruling**, inherited. Left failing rather than rescoped to pass. Remains one of the 12 known failures. | 2026-09-04 |
 
-**Phase 6 opens no new closeout items as of X1.**
+**Phase 6 opened one new closeout item, C6 — see the X6 section below.**
 
 ---
 
@@ -565,3 +565,179 @@ Raw output for both gates plus both curves is committed to
 `tests/evidence/phase6_x5_gate_evidence.txt`, which is the standing record
 while the balance gate is opt-in. A test asserts that file exists and contains
 both gates' figures, so it cannot quietly drift out of existence.
+
+---
+
+## X6 — close, audited against the Definition of Done verbatim
+
+> **"Real opportunities are randomly assigned, control suppression is
+> verifiably real rather than cosmetic, and outcomes are captured through
+> exactly one ingestion path."**
+> — EXECUTION_PLAN.md, Phase 6
+
+Each clause taken separately, with what supports it and what it does **not**
+license.
+
+### 1. "Real opportunities are randomly assigned" — MET, with one label
+
+**Supported.** Assignment happens at `trigger_event.py`, the only
+`INSERT INTO opportunities` in the engine, after the row commits and before
+the first decision. It is idempotent on the primary key, so no opportunity is
+ever re-randomized. The draw is a pure function of the id and a locked salt,
+so any row's arm is recomputable years later by anyone. Measured on 3500
+opportunities created through that path: max |SMD| = 0.0712 against a bound of
+0.10 locked before any result existed.
+
+**What it does not license.** These opportunities are *synthetic events driven
+through the real production path*, not real merchant traffic — no such traffic
+exists for this system. The rows, the assignment, the pipeline and the
+suppression are all real; their origin is a generator. Per the permanent
+invariant that a synthetic-environment result is always labelled as synthetic,
+that label belongs on every number in this phase and on anything Phase 7
+computes from them.
+
+Also: the 150 seeded opportunities are deliberately **not** assigned and are
+excluded from the experiment population by an INNER JOIN. The claim holds for
+opportunities created from X2 onward, not for the pre-existing world.
+
+Finally, the bound is a bound: an imbalance below 0.10 SMD passes by
+construction. PASS means "no imbalance beyond the declared tolerance", never
+"the arms are identical".
+
+### 2. "Control suppression is verifiably real rather than cosmetic" — MET
+
+This is the clause I am most confident in, because it is the one enforced
+structurally rather than measured.
+
+The gate is the first statement of `decide_action()` — the only function that
+can set `allowed: True`, and the single choke point both live paths already
+traverse: the shared pipeline for all three entry points, and
+`dispatch_scheduled._still_permitted()` for the dispatcher, which does **not**
+go through the pipeline. Because it lives there, the dispatcher required no
+change at all and a scheduled action for a control opportunity is abandoned
+with `suppressed_holdout` recorded in `state_reason`.
+
+Verified four independent ways, not one:
+
+| | |
+|---|---|
+| structural | an AST test asserts no verdict-returning branch precedes the gate, permitting exactly one predecessor (the optimizer recursion, which re-enters the same body) |
+| mutation | inserting a verdict-returning branch above the gate fails that test; removing it passes |
+| behavioural | 13 tests including terminal-branch precedence, the dispatcher path, and end-to-end through the real entry point |
+| population | counterfactual gate on 3500 real opportunities: control 0 on all four probes, treatment 1777/1777/1533, plus 1723 suppression rows proving suppression *logs* rather than returning early |
+
+The negative controls are what make it falsifiable: a system that acted on
+nobody would pass a control-only check, so the treatment arm must be non-zero;
+an injected control-arm execution must flip the verdict; a deleted suppression
+log must flip it too. All three are tested.
+
+**What it does not license.** "No outbound message" is verified as "no
+`messages` row". This system has no external side-effect channel, so its own
+tables are the whole of the observable surface. In a system that actually sent
+email or SMS, that would need separate verification.
+
+### 3. "Outcomes are captured through exactly one ingestion path" — MET, with one named exemption
+
+`engine/observe_outcome.py` is the sole writer of `recovered_bool`,
+`partial_recovery_amount`, `recovered_at`, `time_to_recovery` and
+`resolution_type`. Verified by a static allowlist gate over every tracked
+module, and by mutation — restoring the pre-X4 direct write in
+`execute_action` makes that gate fail naming three columns.
+
+The direct scan of the finished tree:
+
+    UPDATE opportunities  ->  observe_outcome.py:162   (outcome columns)
+                              execute_action.py:252    (status only, lifecycle)
+    INSERT INTO opportunities -> trigger_event.py:153  (creation, all NULL)
+                                 db.py:451             (seed loader)
+
+**The one exemption, stated rather than hidden.** `db.py`'s
+`load_opportunities()` writes the outcome columns and is excluded *by name* in
+the gate. It constructs a world from a seed file; it does not observe one. If
+you consider a bulk seed loader to be an ingestion path, then this clause is
+met with one exception rather than absolutely — I read it as world
+construction, and the exemption is explicit so the reading can be disputed.
+
+Unification also *fixed* a divergence rather than merely centralising one:
+`mark_opportunity_recovered()` guarded its write with a compare-and-swap and
+`execute_action()`'s stop branch did not, so a stop racing a recovery could
+overwrite a recovered case as unrecovered — corrupting exactly the numerator
+Phase 7 divides by. The guarded implementation was adopted unchanged.
+
+**Assumption carried forward.** `escalated_resolved` has no producer anywhere
+and never has. `STATUS_FOR_RESOLUTION` maps it to a recovery, which is the
+natural reading but is a guess, recorded in-code as one.
+
+---
+
+## 1a. PROJECT CLOSEOUT LIST — status at Phase 6 close
+
+**Four open items (C3, C4, C5 inherited; C6 opened by X4).** C3/C4/C5 carry
+forward verbatim from PHASE5_NOTES.md section 1a with their full text and
+evidence.
+
+| # | Item | Status | Ruled |
+|---|---|---|---|
+| C3 | `payment_link` dispatchable with no delivery path | **OPEN**, inherited, untouched by Phase 6 | 2026-09-03 |
+| C4 | first `opportunity_lock` hold ~780 ms from the lazy model load | **OPEN**, inherited. Phase 6 narrows it — control opportunities now return before `_load_ml_model()` — but does not close it; treatment opportunities still pay it. No fix claimed. | 2026-09-04 |
+| C5 | `test_method_change_has_no_reachable_executor_path` fails on 2 display labels | **OPEN by ruling**, inherited, left failing rather than rescoped to pass | 2026-09-04 |
+| C6 | `escalated_resolved` is in the closed resolution vocabulary but has **no producer**, and `observe_outcome`'s mapping of it to a recovery is an assumption, not a decision. | **OPEN**, opened by Phase 6 / X4. Closing it means either adding a producer (and confirming the mapping deliberately) or retiring the value. Neither is Phase 6's to decide, since nothing in Phase 6 writes it. | 2026-09-04 |
+
+**Resolved inside Phase 6, recorded rather than deleted:**
+
+- **The repository could not build its database from a clean checkout.**
+  `python -m backend.db.db` failed on `:bank` because `a7cd6d2` added
+  `bank`/`psp` to the payments INSERT without regenerating the tracked seed.
+  Fixed at X1 by regenerating; no code change was needed.
+- **`load_bank_health_observations()` was not idempotent.** A plain INSERT with
+  no key to replace on, so every bootstrap appended another full copy: 12,960
+  rows after one run, 25,920 after two, and 51,840 in the main checkout's
+  working database. Harmless to any average — the duplicates are identical
+  rows — but it made the bootstrap non-reproducible in a project whose Phase 0
+  gate asserts the opposite. It went unnoticed because that gate's table list
+  covered merchants/customers/opportunities/payments and not this table. Fixed
+  at X6; the table list now includes it, so it cannot recur.
+- **A circular import shipped at X2 and was caught at X3.**
+  `phase6_config._check()` imported `trigger_event` at import time, so
+  `import backend.engine.trigger_event` failed in a fresh interpreter while
+  all 425 tests passed — collection happened to import `phase6_config` first
+  every time. Fixed by moving the assertion into the test that can safely
+  perform it, and pinned by a new gate that imports all 18 engine modules each
+  in its own subprocess.
+
+**Withdrawn, with the diagnosis kept:**
+
+- **The "missing bank/psp columns" defect.** Filed during planning as a live
+  code defect with a proposed `ADDITIVE_COLUMNS` patch. It was a stale
+  database file — mtime ~30 hours older than the commit that added the
+  columns — being read as evidence about the code. No patch was made.
+- **"The balance gate is nearly blind to small bias."** Filed at X5 from a
+  detection curve parameterised in the wrong units. A 0.05 bias induces
+  ~0.042 SMD, below the 0.10 the gate is told to enforce; not firing there is
+  correct. The tell was detection falling as n rose.
+
+---
+
+## Phase 6 close — final state
+
+**Suite: 12 failed, 8 skipped, everything else passing.** The 12 are Phase 5's
+recorded known failures, matched by name at every one of the six checkpoints.
+**Phase 6 introduced no new failure at any point.** Three regressions appeared
+during the phase and all three were genuine consequences of correct changes,
+diagnosed and resolved rather than suppressed:
+
+| checkpoint | regression | resolution |
+|---|---|---|
+| X3 | `test_trigger_event_parity_over_the_fixed_spec_list` | legacy side had no assignment while the unified side did; equalised, dated amendment, now covers both arms |
+| X4 | `test_recovery_update_is_guarded_by_the_status_it_read` | the compare-and-swap moved to `observe_outcome`; the test now follows it and additionally forbids the wrapper from writing |
+| X5 | the balance gate itself | the floor, not the randomizer — `MIN_ASSIGNED_N` was locked too low to be compatible with the bound |
+
+**One locked value was amended:** `MIN_ASSIGNED_N` 200 → 3500 at X5, with a
+dated, evidence-backed reason diagnosed independently of the failing result.
+**`MAX_ABS_SMD` was never touched.** No numeric tolerance was loosened at any
+point to obtain a pass.
+
+**Frozen files:** none were modified, and no frozen-file exception was
+requested or granted. `candidate_generation.py`, `ml/inference.py`,
+`ml/outcome_features.py`, the Phase 3 eval artifacts and `optimize.py` are all
+untouched by Phase 6.

@@ -935,11 +935,17 @@ def test_bootstrap_sequence_is_idempotent(db_path, seed_data_dir):
     implementation rather than a guarantee, and a later phase adding an
     append-only or audit-style loader would break it silently.
     """
-    from backend.db.db import (create_schema, get_connection, load_customers,
+    from backend.db.db import (create_schema, get_connection,
+                               load_bank_health_observations, load_customers,
                                load_merchants, load_opportunities,
                                load_payments)
 
-    tables = ("merchants", "customers", "opportunities", "payments")
+    # bank_health_observations added Phase 6 / X6: it was the one loader
+    # that was not idempotent (a plain INSERT with no key to replace on,
+    # so every bootstrap appended another full copy of the series), and
+    # its absence from this list is why that went unnoticed.
+    tables = ("merchants", "customers", "opportunities", "payments",
+              "bank_health_observations")
 
     def bootstrap_once():
         conn = get_connection()
@@ -948,6 +954,7 @@ def test_bootstrap_sequence_is_idempotent(db_path, seed_data_dir):
         load_customers(conn)
         load_opportunities(conn)
         load_payments(conn)
+        load_bank_health_observations(conn)
         counts = {t: conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
                   for t in tables}
         digest = conn.execute(

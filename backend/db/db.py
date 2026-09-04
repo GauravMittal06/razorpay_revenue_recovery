@@ -502,6 +502,25 @@ def load_bank_health_observations(conn):
     with open(path) as f:
         observations = json.load(f)
 
+    # Phase 6 / X6. Every other loader here is INSERT OR REPLACE and is
+    # therefore idempotent; this one was a plain INSERT with no natural key to
+    # replace on (`id` is AUTOINCREMENT), so each bootstrap ADDED another full
+    # copy of the series. Measured: 12,960 rows after one run, 25,920 after
+    # two, and the working database in the main checkout had accumulated
+    # 51,840 -- four copies.
+    #
+    # It did not corrupt any average, since the duplicates are identical rows
+    # and the rolling mean over a window is unchanged by them. It did make the
+    # bootstrap non-reproducible in a project whose Phase 0 gate asserts the
+    # opposite, and it went unnoticed because that gate's table list covered
+    # merchants/customers/opportunities/payments and not this table. The list
+    # now includes it.
+    #
+    # Clearing first rather than adding a unique constraint: the series is a
+    # regenerable snapshot, and "load" here has always meant "make the table
+    # be this file".
+    conn.execute("DELETE FROM bank_health_observations")
+
     conn.executemany(
         """
         INSERT INTO bank_health_observations
