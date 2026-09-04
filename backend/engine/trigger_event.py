@@ -35,6 +35,7 @@ import time
 import uuid
 import sqlite3
 
+from backend.engine.assign_experiment_group import assign_experiment_group
 from backend.engine.pipeline import run_recovery_pipeline
 
 # Request-synchronous entry point: the optimizer stays disabled here while
@@ -216,6 +217,31 @@ def trigger_event(event_type: str, amount: int, conn,
     )
     conn.commit()
 
+    # Phase 6 / X2: randomized assignment, at opportunity-creation time.
+    #
+    # Position is load-bearing in three directions:
+    #
+    #   * AFTER the commit above, so the foreign key to `opportunities` is
+    #     satisfiable and an assignment row can never be orphaned.
+    #   * BEFORE run_recovery_pipeline() below, so the very first decision
+    #     this opportunity ever receives already sees its group. An
+    #     opportunity that got treated once and was assigned afterwards would
+    #     be in the control arm with a treatment in its history.
+    #   * AFTER both duplicate-event short-circuits (the pre-check near the
+    #     top and the IntegrityError handler above), which return before
+    #     reaching here. A replayed upstream event must not re-randomize an
+    #     opportunity that already exists -- and could not, since assignment
+    #     is idempotent on the primary key, but the ordering means the
+    #     question never arises.
+    #
+    # This stays in the entry point rather than moving into pipeline.py, for
+    # the reason recorded in that module's docstring: an entry point's own
+    # creation work stays with the entry point, and only the recovery
+    # pipeline is shared. Assignment is creation work -- the other two entry
+    # points operate on opportunities that already exist and must never
+    # assign.
+    assignment = assign_experiment_group(opportunity_id, conn, now=now)
+
     # W7: the identical shared pipeline core_loop.py and
     # handle_customer_reply.py run -- one function, not a re-sequencing of
     # the same calls. Everything above this line (validation, the
@@ -243,6 +269,7 @@ def trigger_event(event_type: str, amount: int, conn,
         "status": "ok",
         "opportunity": opportunity,
         "payment": payment,
+        "assignment": assignment,
         "classification": classification,
         "decision": decision,
         "execution_result": result,

@@ -4,7 +4,7 @@ Working record. Written as the phase runs, not reconstructed after it.
 
     X0  locked bounds declared before the work they govern          DONE
     X1  stale artifacts regenerated; baseline captured              DONE
-    X2  assign_experiment_group.py + creation-time hook             --
+    X2  assign_experiment_group.py + creation-time hook             DONE
     X3  control suppression in the rule engine                      --
     X4  observe_outcome.py as the single ingestion path             --
     X5  assignment volume + the two hard gates                      --
@@ -169,3 +169,88 @@ parametrized import check picking up `phase6_config.py`. **Zero new failures
 at any point in Phase 6 so far.** This list is the bar every later checkpoint
 is measured against; a 13th failure is a Phase 6 regression, not an
 inheritance.
+
+---
+
+## X2 — assignment, at the one place opportunities are created
+
+`engine/trigger_event.py:150` is the only `INSERT INTO opportunities` in the
+engine; `db.py`'s `load_opportunities()` is the only other writer and is bulk
+world-construction, not creation. `core_loop.run_cycle()` and
+`handle_customer_reply()` both read rows that already exist. So there is
+exactly one creation point, and the hook goes there.
+
+### Where the call sits, and why each boundary matters
+
+    conn.commit()                       <- opportunity + payment durable
+    assign_experiment_group(...)        <- HERE
+    run_recovery_pipeline(...)          <- first decision ever made
+
+| Boundary | If it moved | Consequence |
+|---|---|---|
+| after the commit | before | the FK could not be satisfied; assignment orphaned |
+| before the pipeline | after | an opportunity treated *then* assigned — a control-arm row carrying a treatment in its history |
+| after both dedup short-circuits | before | a replayed upstream event re-randomizes a live opportunity |
+
+It stays in the entry point rather than moving into `pipeline.py`, for the
+reason that module's own docstring gives: an entry point's creation work stays
+with the entry point, only the recovery pipeline is shared. The other two
+entry points must never assign, and a static gate now enforces that.
+
+### The randomness is not in this module
+
+The draw is `phase6_config.assigned_group()` — a pure function of the id and
+the locked salt. `assign_experiment_group.py` is the persistence half only.
+That split is what makes an assignment auditable: any row's group is
+recomputable from its id plus the committed salt, without this module, without
+the database, years later. A test asserts the stored group equals the derived
+one across 40 opportunities, so the module cannot start drawing its own
+randomness without failing.
+
+`get_assignment()` deliberately does **not** fall back to deriving a group for
+a row with no assignment. A reader that did would silently enrol the entire
+pre-Phase-6 population into an experiment it was never randomized for, and
+every one of those 150 rows would then count toward an incremental number it
+has no business informing.
+
+### Assign once, and the guarantee is the schema's
+
+`experiment_assignment.opportunity_id` is the PRIMARY KEY. The SELECT fast path
+has a check-then-insert race window and is not the guarantee; the primary key
+is, and the `IntegrityError` handler is what makes the two agree under
+concurrency. Two constraints reach that handler and need opposite answers —
+the primary key means "a concurrent caller won, return the row that won", the
+foreign key means "no such opportunity, assign nothing" — so the handler
+resolves by re-reading rather than by trusting the exception type.
+
+A repeat call does not move `assigned_at`. The original assignment instant is
+what the experiment is anchored to, and the counterfactual gate compares
+activity against it.
+
+### Static authority gates
+
+Added to `test_permanent_gates.py`, reusing the existing optimizer machinery
+(`FORBIDDEN_AUTHORITY_NAMES`, `FORBIDDEN_AUTHORITY_MODULES`,
+`WRITE_STATEMENT`) rather than a parallel rule set that could drift from it:
+
+- the module exists where the checks expect it (else they scan nothing and pass)
+- it imports nothing with execution authority
+- it writes only `experiment_assignment`
+- it never references an outcome column — an assigner able to resolve an
+  opportunity could manufacture the very result the experiment measures
+- `assign_experiment_group()` is called from no entry point but `trigger_event`
+
+**Verified by mutation, not by assertion.** A probe adding
+`UPDATE opportunities SET resolution_type ...` and
+`from backend.engine.execute_action import execute_action` to the module was
+temporarily appended; all three relevant gates failed, and passed again once
+it was removed. A gate never seen to fail is not evidence.
+
+`observe_outcome.py` joins `PHASE6_WRITABLE_TABLES` at X4. Listing it before it
+exists would fail the existence check for all of X2 and X3 — noise, not a gate.
+
+### Suite
+
+**444 collected, 425 passed, 12 failed, 7 skipped.** The 12 are the X1
+baseline list, matched by name. 407 → 425 is this checkpoint's 18 new tests
+(12 behavioural + 5 static + 1 parametrized import check). Zero new failures.

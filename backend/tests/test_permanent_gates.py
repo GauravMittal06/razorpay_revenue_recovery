@@ -560,6 +560,132 @@ def test_optimizer_does_not_open_a_second_scoring_path():
 
 
 # --------------------------------------------------------------------------
+# Phase 6 module authority -- the experiment modules propose and record;
+# they never act
+# --------------------------------------------------------------------------
+#
+# EXECUTION_PLAN Phase 6 puts assign_experiment_group.py and observe_outcome.py
+# under the same static-check discipline as optimize.py, so they are checked by
+# the same machinery above rather than by a parallel set of rules that could
+# drift from it.
+#
+# The two are bounded differently because they do different jobs:
+#
+#   * assign_experiment_group records which arm an opportunity is in. It has
+#     no business touching any other table, and in particular must never write
+#     an outcome -- an assigner that could resolve an opportunity could
+#     manufacture the very result the experiment exists to measure.
+#   * observe_outcome is the SOLE writer of the business-outcome fields, so it
+#     must be able to write `opportunities`. It still holds no compliance or
+#     execution authority: it records what happened, it never decides what may
+#     happen next. It joins this table at X4, when it exists -- listing a
+#     module here before it is written would make the existence check below
+#     fail for the whole of X2 and X3, which is noise, not a gate.
+
+PHASE6_WRITABLE_TABLES = {
+    "assign_experiment_group.py": {"experiment_assignment"},
+}
+
+
+def _phase6_paths() -> list[Path]:
+    return [BACKEND_DIR / "engine" / name for name in PHASE6_WRITABLE_TABLES]
+
+
+@pytest.mark.gate("permanent.single_authority")
+def test_phase6_modules_exist_where_the_authority_check_expects_them():
+    """If either module is renamed or moved, the checks below would silently
+    scan nothing and pass. This is what stops that."""
+    missing = [p.name for p in _phase6_paths() if not p.exists()]
+    assert not missing, f"Phase 6 modules not found: {missing}"
+
+
+@pytest.mark.gate("permanent.single_authority")
+def test_phase6_modules_import_nothing_with_execution_authority():
+    offenders = []
+    for path in _phase6_paths():
+        if not path.exists():
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), str(path))
+        rel = path.relative_to(PROJECT_ROOT).as_posix()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name in FORBIDDEN_AUTHORITY_MODULES:
+                        offenders.append(f"{rel}:{node.lineno}: import {alias.name}")
+            elif isinstance(node, ast.ImportFrom):
+                module = node.module or ""
+                if module in FORBIDDEN_AUTHORITY_MODULES:
+                    offenders.append(f"{rel}:{node.lineno}: from {module}")
+                for alias in node.names:
+                    if alias.name in FORBIDDEN_AUTHORITY_NAMES:
+                        offenders.append(
+                            f"{rel}:{node.lineno}: imports {alias.name}")
+            elif isinstance(node, ast.Name) and node.id in FORBIDDEN_AUTHORITY_NAMES:
+                offenders.append(f"{rel}:{node.lineno}: references {node.id}")
+            elif isinstance(node, ast.Attribute) and \
+                    node.attr in FORBIDDEN_AUTHORITY_NAMES:
+                offenders.append(f"{rel}:{node.lineno}: calls .{node.attr}")
+    assert not offenders, (
+        "a Phase 6 module has a path to execution authority:\n"
+        + "\n".join(offenders))
+
+
+@pytest.mark.gate("permanent.single_authority")
+def test_phase6_modules_write_only_their_declared_table():
+    offenders = []
+    for path in _phase6_paths():
+        if not path.exists():
+            continue
+        allowed = PHASE6_WRITABLE_TABLES[path.name]
+        text = path.read_text(encoding="utf-8")
+        rel = path.relative_to(PROJECT_ROOT).as_posix()
+        for match in WRITE_STATEMENT.finditer(text):
+            table = match.group(2).lower()
+            if table not in allowed:
+                offenders.append(f"{rel}: writes {table} (allowed: {sorted(allowed)})")
+    assert not offenders, (
+        "a Phase 6 module writes outside its declared table:\n"
+        + "\n".join(sorted(set(offenders))))
+
+
+@pytest.mark.gate("permanent.single_authority")
+def test_the_assigner_can_never_write_a_business_outcome():
+    """
+    Narrower than the table check above and worth stating separately: an
+    assigner able to resolve an opportunity could manufacture the very result
+    the experiment exists to measure. `opportunities` is absent from its
+    allowed set, and these column names must not appear in it at all.
+    """
+    path = BACKEND_DIR / "engine" / "assign_experiment_group.py"
+    text = path.read_text(encoding="utf-8")
+    forbidden = ("recovered_bool", "partial_recovery_amount", "recovered_at",
+                 "time_to_recovery", "resolution_type")
+    present = [c for c in forbidden if c in text]
+    assert not present, (
+        f"assign_experiment_group.py references outcome columns: {present}")
+
+
+@pytest.mark.gate("permanent.single_authority")
+def test_only_the_creation_entry_point_assigns_an_experiment_group():
+    """
+    Assignment is creation work. `core_loop` and `handle_customer_reply`
+    operate on opportunities that already exist, so an assignment call in
+    either would be assigning something mid-flight -- after it may already
+    have been treated, which silently corrupts the arm it lands in.
+    """
+    callers = []
+    for path in sorted((BACKEND_DIR / "engine").glob("*.py")) + \
+            sorted((BACKEND_DIR / "api").glob("*.py")):
+        if path.name in ("assign_experiment_group.py", "trigger_event.py"):
+            continue
+        if "assign_experiment_group(" in path.read_text(encoding="utf-8"):
+            callers.append(path.relative_to(PROJECT_ROOT).as_posix())
+    assert not callers, (
+        "assign_experiment_group() is called outside the creation entry "
+        f"point: {callers}")
+
+
+# --------------------------------------------------------------------------
 # Dataset provenance
 # --------------------------------------------------------------------------
 
