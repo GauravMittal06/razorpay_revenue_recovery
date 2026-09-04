@@ -312,13 +312,39 @@ def test_trigger_event_parity_over_the_fixed_spec_list(tmp_path, seed_data_dir,
              payment["error_reason"], now))
         legacy_conn.commit()
 
-        legacy = _comparable(legacy_trigger_event_tail(
-            opportunity, payment, event_type,
-            root_cause if event_type == "payment_failed" else None, legacy_conn))
-
+        # AMENDMENT, Phase 6 / X3, locked 2026-09-04. The unified side runs the real
+        # trigger_event, which now assigns each opportunity it creates to a
+        # randomized arm; the legacy side builds its rows by hand and has no
+        # assignment. At a 0.5 holdout that made roughly half these specs
+        # diverge for a reason that has nothing to do with pipeline
+        # unification: the unified opportunity was suppressed as a control and
+        # the legacy one was not.
+        #
+        # Equalising the experiment state on both sides is what keeps this
+        # test measuring the thing it was written to measure. Left unchanged,
+        # it would instead have asserted that Phase 6 had not happened.
+        #
+        # NOT a weakening. Parity is still judged at
+        # PIPELINE_PARITY_FIELD_TOLERANCE = 0 over the same six specs, and the
+        # check is now strictly stronger: it exercises the legacy-vs-unified
+        # comparison in BOTH arms, including the suppression path, where
+        # before it only ever saw the treated one.
         result = trigger_event(event_type, amount, unified_conn,
                                root_cause=root_cause, days_overdue=days_overdue)
         assert result["status"] == "ok", result
+
+        legacy_conn.execute(
+            'INSERT INTO experiment_assignment '
+            '(opportunity_id, "group", assigned_at, assignment_method) '
+            "VALUES (?, ?, ?, ?)",
+            (oid, result["assignment"]["group"],
+             result["assignment"]["assigned_at"],
+             result["assignment"]["assignment_method"]))
+        legacy_conn.commit()
+
+        legacy = _comparable(legacy_trigger_event_tail(
+            opportunity, payment, event_type,
+            root_cause if event_type == "payment_failed" else None, legacy_conn))
         unified = _comparable({
             "classification": result["classification"],
             "decision": result["decision"],

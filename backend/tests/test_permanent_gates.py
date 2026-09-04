@@ -13,6 +13,7 @@ import importlib
 import pkgutil
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -683,6 +684,37 @@ def test_only_the_creation_entry_point_assigns_an_experiment_group():
     assert not callers, (
         "assign_experiment_group() is called outside the creation entry "
         f"point: {callers}")
+
+
+@pytest.mark.gate("permanent.import_hygiene")
+@pytest.mark.parametrize("module_name", sorted(
+    f"backend.engine.{p.stem}"
+    for p in (BACKEND_DIR / "engine").glob("*.py")
+    if p.stem != "__init__"))
+def test_every_engine_module_imports_standalone(module_name):
+    """
+    Each engine module must import on its own, in a fresh interpreter.
+
+    A SUBPROCESS per module is the point. Within one interpreter, sys.modules
+    caching means whichever module was imported first satisfies the others,
+    so a genuine import cycle passes as long as collection happened to reach
+    the modules in a forgiving order.
+
+    That is not hypothetical -- it is a defect Phase 6 actually shipped at X2
+    and did not catch until X3. `phase6_config._check()` runs at import and
+    imported `trigger_event` for a vocabulary assertion, creating
+    trigger_event -> assign_experiment_group -> phase6_config -> trigger_event.
+    `import backend.engine.trigger_event` failed outright in a fresh
+    interpreter while all 425 tests passed, because collection imported
+    phase6_config first every time. Fixed by moving that assertion into
+    tests/test_phase6_config.py, where importing an entry point is safe.
+    """
+    result = subprocess.run(
+        [sys.executable, "-c", f"import {module_name}"],
+        cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=120)
+    assert result.returncode == 0, (
+        f"{module_name} does not import standalone:\n"
+        f"{result.stderr.strip()[-2000:]}")
 
 
 # --------------------------------------------------------------------------

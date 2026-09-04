@@ -5,7 +5,7 @@ Working record. Written as the phase runs, not reconstructed after it.
     X0  locked bounds declared before the work they govern          DONE
     X1  stale artifacts regenerated; baseline captured              DONE
     X2  assign_experiment_group.py + creation-time hook             DONE
-    X3  control suppression in the rule engine                      --
+    X3  control suppression in the rule engine                      DONE
     X4  observe_outcome.py as the single ingestion path             --
     X5  assignment volume + the two hard gates                      --
     X6  close: notes, inventory, carried-forward closeout           --
@@ -254,3 +254,96 @@ exists would fail the existence check for all of X2 and X3 — noise, not a gate
 **444 collected, 425 passed, 12 failed, 7 skipped.** The 12 are the X1
 baseline list, matched by name. 407 → 425 is this checkpoint's 18 new tests
 (12 behavioural + 5 static + 1 parametrized import check). Zero new failures.
+
+---
+
+## X3 — control suppression, and why it lives in the rule engine
+
+The gate is the **first statement** of `decide_action()`'s hardcoded body.
+
+### Placement is the whole design
+
+`decide_action()` is the only function that can set `allowed: True`, and it is
+the single choke point BOTH live paths already pass through:
+
+| Path | Reaches decide_action via |
+|---|---|
+| batch / trigger_event / customer_reply | `pipeline.run_recovery_pipeline()` |
+| the dispatcher | `dispatch_scheduled._still_permitted()` — **not** the pipeline |
+
+A suppression implemented in `pipeline.py` would have left the second path
+open, so an action scheduled before assignment could still fire afterwards.
+Putting it in the rule engine meant `dispatch_scheduled.py` needed **no code
+change at all**: a control opportunity's queued action is abandoned and the
+`state_reason` records `suppressed_holdout`. That is the test at
+`test_a_scheduled_action_for_a_control_opportunity_is_abandoned`.
+
+Being *first* matters separately. Every branch below either grants permission
+or reads state to decide whether to; a suppression running after any of them
+would depend on branch ordering rather than on the arm. It also returns before
+`_get_history()` and before `_load_ml_model()`, which **narrows closeout C4 but
+does not close it** — treatment opportunities still pay the lazy model load.
+
+`action_type` is `None` on purpose: no action was blocked, because none was
+ever selected. Naming one would put an action the system never considered into
+the audit trail.
+
+The ranked path needed no change either. It recurses into this body for its
+authoritative `baseline`, and already returns that baseline unchanged when it
+is not-allowed and the outcome is not `blocked_contact_hours`. A suppression is
+both.
+
+### A defect this phase shipped at X2 and caught at X3
+
+`phase6_config._check()` runs at import and imported `trigger_event` for a
+vocabulary assertion, creating
+
+    trigger_event -> assign_experiment_group -> phase6_config -> trigger_event
+
+`import backend.engine.trigger_event` failed outright in a fresh interpreter,
+**while all 425 X2 tests passed** — collection imported `phase6_config` first
+every time, and `sys.modules` caching hid it.
+
+Fixed by moving the assertion into
+`test_phase6_config.py::test_diagnosis_levels_cover_the_entry_points_accepted_vocabulary`,
+which can import an entry point safely. Nothing was weakened; the check moved
+to a place that can perform it. A configuration module must not import an entry
+point at import time.
+
+New permanent gate: `test_every_engine_module_imports_standalone`, parametrized
+over all 18 engine modules, each in **its own subprocess** — because
+same-interpreter caching is precisely what masked this. Verified against the
+broken state before the fix.
+
+### The parity amendment (dated 2026-09-04)
+
+`test_trigger_event_parity_over_the_fixed_spec_list` began failing — the 13th
+failure, a genuine regression rather than an inheritance. Cause: the legacy
+side hand-inserts a fixed-id opportunity with **no assignment row**, while the
+unified side calls real `trigger_event`, which now assigns. At a 0.5 holdout
+roughly half the six specs were suppressed on one side only.
+
+Note the mechanism precisely: the legacy side does **not** hash a fixed id into
+an arm. It has no assignment row, so it is `unassigned -> not suppressed`
+regardless of what the formula would derive for `opp_legacy_N`. Only one side
+consults an assignment. The condition is
+
+    diverged  <==>  the UNIFIED opportunity landed in control
+
+Measured over 5 reps x 6 specs = 30 comparisons: 12 control, 12 diverged,
+**diverged set == control set exactly**. Every spec diverged in at least one
+rep and none in all reps, so it is not a property of any spec. The legacy ids'
+derived buckets (treatment, control, treatment, treatment, control, control)
+do not match the divergence pattern — which is the proof they are inert.
+
+Fixed by giving the legacy row the same assignment the unified opportunity
+received. Post-fix, over the same 30 comparisons: control arm 18 / 0 diverged,
+treatment arm 12 / 0 diverged, control outcomes `['suppressed_holdout']`,
+treatment outcomes `['executed']`. Tolerance still 0, same six specs, and the
+check now covers both arms where before it only ever saw the treated one.
+
+### Suite
+
+**475 collected, 456 passed, 12 failed, 7 skipped.** The 12 are the X1 baseline
+by name. 425 -> 456 is 13 suppression tests + 18 standalone-import checks.
+Zero new failures.

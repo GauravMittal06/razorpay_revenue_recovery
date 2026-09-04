@@ -365,18 +365,24 @@ def _check() -> None:
     if not CONTINUOUS_COVARIATES or not CATEGORICAL_COVARIATES:
         raise ValueError("the balance gate needs covariates on both sides")
 
-    # The declared level lists must match their named sources, or the gate
-    # silently stops covering a root cause the entry point still accepts.
-    from backend.engine.trigger_event import (VALID_EVENT_TYPES,
-                                              VALID_ROOT_CAUSES)
-    expected = set(VALID_ROOT_CAUSES) | (set(VALID_EVENT_TYPES)
-                                         - {"payment_failed"})
-    declared = set(CATEGORICAL_COVARIATES["diagnosis"])
-    if declared != expected:
-        raise ValueError(
-            f"the diagnosis level list has drifted from its declared sources "
-            f"{DIAGNOSIS_LEVEL_SOURCES}: missing {sorted(expected - declared)}, "
-            f"unexpected {sorted(declared - expected)}")
+    # The declared level lists must match their named sources
+    # (DIAGNOSIS_LEVEL_SOURCES), or the gate silently stops covering a root
+    # cause the entry point still accepts.
+    #
+    # That check is NOT made here, and the reason is a defect this file
+    # originally shipped with. `_check()` runs at import, so importing
+    # trigger_event here created a cycle -- trigger_event ->
+    # assign_experiment_group -> phase6_config -> trigger_event -- which broke
+    # `import backend.engine.trigger_event` in a fresh interpreter. It
+    # survived X2's full suite only because collection happened to import
+    # phase6_config first, which masks it entirely.
+    #
+    # A configuration module must not import an entry point at import time.
+    # The assertion itself is unchanged and still mechanical; it lives in
+    # tests/test_phase6_config.py::
+    # test_diagnosis_levels_cover_the_entry_points_accepted_vocabulary, which
+    # is free to import whatever it needs. Nothing was weakened -- the check
+    # moved to a place that can perform it safely.
 
     if COUNTERFACTUAL_CONTROL_EXPECTED != 0:
         raise ValueError(

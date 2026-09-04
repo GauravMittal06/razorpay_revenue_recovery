@@ -29,6 +29,8 @@ from datetime import datetime
 # they are recorded rulings that must NOT vary at runtime, so binding them at
 # import is the point.
 from backend.engine import phase5_config as _phase5
+from backend.engine import phase6_config as _phase6
+from backend.engine.assign_experiment_group import get_assignment
 
 # Phase 5 declared bounds. Imported, never re-derived here: the method-change
 # boundary and the exhaustion outcome are recorded rulings, and a second
@@ -494,6 +496,66 @@ def decide_action(opportunity: dict, classification: dict, conn,
     opportunity_id = opportunity["opportunity_id"]
     event_type = opportunity["event_type"]
     now = int(time.time())
+
+    # ----------------------------------------------------------------------
+    # Phase 6 / X3: randomized-holdout suppression. FIRST, before everything.
+    # ----------------------------------------------------------------------
+    # This opportunity is in the control arm, so it receives no automated
+    # intervention. It is still diagnosed and still quantified -- classify()
+    # has already run, its amount_at_risk still counts toward reporting -- but
+    # nothing may be selected or executed for it.
+    #
+    # WHY THIS LIVES HERE AND NOT IN THE PIPELINE
+    #
+    # decide_action() is the sole authority that can set `allowed: True`, and
+    # it is the single choke point BOTH live paths already pass through:
+    # pipeline.run_recovery_pipeline() for all three entry points, and
+    # dispatch_scheduled._still_permitted() for the dispatcher's revalidation
+    # of an already-scheduled action. Putting the check in pipeline.py instead
+    # would leave the dispatcher uncovered, so an action scheduled before
+    # assignment could still fire afterwards -- precisely the case the
+    # counterfactual gate exists to catch.
+    #
+    # WHY IT IS FIRST
+    #
+    # Every branch below it either grants permission or reads state to decide
+    # whether to. A suppression that ran after any of them would be relying on
+    # those branches to happen not to return first, which is a property of
+    # branch ordering rather than a guarantee. Being first also means a
+    # control opportunity returns before _get_history() and before
+    # _load_ml_model(), so it costs one indexed lookup rather than a model
+    # load -- which narrows closeout C4, though it does not close it, since
+    # treatment opportunities still pay that cost.
+    #
+    # THE RANKED PATH NEEDS NO CHANGE. It recurses into this body for its
+    # authoritative `baseline` verdict, and already returns that baseline
+    # unchanged whenever it is not-allowed and the outcome is not
+    # blocked_contact_hours. A suppression is both, so it propagates without
+    # touching the fallthrough logic.
+    #
+    # action_type is None on purpose: no action was blocked, because none was
+    # ever selected. Naming one here would put an action the system never
+    # considered into the audit trail.
+    assignment = get_assignment(opportunity_id, conn)
+    if assignment is not None and assignment["group"] == _phase6.CONTROL_GROUP:
+        return {
+            "action_type": None,
+            "allowed": False,
+            "reasoning": (
+                "Randomized holdout: opportunity is in the control arm "
+                f"(assigned {assignment['assigned_at']}, "
+                f"{assignment['assignment_method']}). No automated "
+                "intervention is permitted; the case is still diagnosed and "
+                "its amount at risk still counts toward reporting."
+            ),
+            "outcome": _phase6.SUPPRESSION_OUTCOME,
+            "triggered_by": "rule",
+        }
+    # An opportunity with NO assignment row is not in the experiment and is
+    # NOT suppressed (ruling 2026-09-04, phase6_config.UNASSIGNED_IS_SUPPRESSED
+    # = False). This is the project's one deliberate fail-OPEN, and it is what
+    # makes every pre-Phase-6 opportunity behave exactly as it did before --
+    # the property the W1 golden corpus pins.
 
     history = _get_history(opportunity_id, conn)
     # Amendment A1, 2026-09-03: a decision that was approved but whose

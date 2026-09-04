@@ -86,6 +86,7 @@ DELIVERY
 from contextlib import nullcontext
 
 from backend.engine import phase5_config as _phase5
+from backend.engine import phase6_config as _phase6
 from backend.engine.classify import classify
 from backend.engine.decide_action import decide_action
 from backend.engine.deliver_message import deliver_recovery_message
@@ -133,6 +134,27 @@ def _ranked_candidates(conn, opportunity: dict, entry_point: str):
     absence can cost optimality but never correctness.
     """
     if not _phase5.OPTIMIZER_ENABLED_BY_ENTRY_POINT.get(entry_point, False):
+        return None
+
+    # Phase 6 / X3: a control-arm opportunity is suppressed from the
+    # optimizer pathway, so no candidate is generated, scored, ranked or
+    # persisted for it.
+    #
+    # This is an OPTIMIZATION, NOT THE GUARANTEE. The guarantee is the
+    # suppression branch at the top of decide_action(), which covers this path
+    # and the dispatcher's revalidation path alike. Deleting these three lines
+    # would waste ~650 ms of ranking per control opportunity and write
+    # recovery_candidates rows that can never be selected, but it could not
+    # cause a control opportunity to be acted on.
+    #
+    # It is still worth having: EXECUTION_PLAN Phase 6 says control
+    # opportunities are "suppressed from the optimizer/executor pathway", and
+    # a control arm that silently accrued scored candidates would make the
+    # counterfactual gate's `recovery_candidates.selected = 1` probe read as
+    # a near-miss rather than a structural impossibility.
+    from backend.engine.assign_experiment_group import get_assignment
+    assignment = get_assignment(opportunity["opportunity_id"], conn)
+    if assignment is not None and assignment["group"] == _phase6.CONTROL_GROUP:
         return None
 
     from backend.engine.optimize import optimize_opportunity
