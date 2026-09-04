@@ -1,16 +1,19 @@
 Phase 6 exit gate + Phase 7 attribution -- evidence
 ======================================================================
-ALL OUTCOMES BELOW ARE SYNTHETIC. They were drawn from the Data Factory's
-potential-outcome generator (outcome_model.draw_outcome) and are NOT
-observations of any real payment system. outcome_source records this per row.
+ALL OUTCOMES BELOW ARE SYNTHETIC. Drawn from the Data Factory's
+potential-outcome generator (outcome_model.draw_outcome); NOT observations
+of any real payment system. outcome_source records this per row.
 
 Population : 3500 opportunities via engine/trigger_event.py, optimizer ENABLED
              python -m backend.data.generate_experiment_volume --count 3500
              python -m backend.data.generate_experiment_outcomes
-created_at : pinned to hour 12 (see generate_experiment_volume.DEFAULT_CREATED_AT_HOUR)
-Optimizer  : trigger_event=True  (latency budget 250ms STILL UNMET and disclosed)
+created_at : pinned to hour 12 (generate_experiment_volume.DEFAULT_CREATED_AT_HOUR)
+Optimizer  : trigger_event=True; latency budget 250ms STILL UNMET and disclosed
+Thresholds : MAX_ABS_SMD=0.1 locked 2026-09-04 (commit 6b6409e, before the run)
+             MIN_N_PER_ARM=30 locked 2026-09-05 RETROSPECTIVELY -- same commit as
+             the evaluation; disclosed in locked_thresholds.json and PHASE7_NOTES.md 6
 
-outcome_source distribution over resolved experiment rows: {'synthetic_potential_outcome': 3500}
+outcome_source distribution: {'synthetic_potential_outcome': 3500}
 
 RANDOMIZATION BALANCE -- RAW FIGURES
   assigned total   : 3500
@@ -81,7 +84,11 @@ INCREMENTAL RECOVERY -- AGGREGATE (SYNTHETIC DATA)
     95% CI                  : [-6,178,854.73, +11,578,089.55]
 
   PREDICTED vs OBSERVED (diagnostic, not an agreement check)
-    predicted EIV / oppty : +5,430.16   (n=1452 selected candidates)
-    observed    / oppty   : +1,549.72
-    delta                 : -3,880.44
-    predicted inside the observed 95% CI: True
+    THE TWO FIGURES HAVE DIFFERENT NATURAL DENOMINATORS; both are shown.
+    predicted EIV, over selected candidates only  : +5,430.16  (n=1452)
+    predicted EIV, over ALL resolved treatment    : +4,526.18  (n=1742)
+    observed,      over ALL resolved treatment    : +1,549.72  (n=1742)
+
+    delta, like for like (common denominator)     : -2,976.45
+    delta, against selected-only predicted        : -3,880.44   (mismatched denominators)
+    like-for-like predicted inside observed 95% CI: True

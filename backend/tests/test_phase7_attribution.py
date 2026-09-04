@@ -93,6 +93,34 @@ def test_an_empty_population_refuses_rather_than_reporting_zero(seeded_db):
 
 
 @pytest.mark.gate("phase7.min_n")
+def test_the_floor_agrees_with_its_dated_lock_file_entry():
+    """
+    The constant and the dated lock must not drift, same discipline as every
+    Phase 6 bound. This lock was recorded LATE -- 2026-09-05, retrospectively,
+    in the same commit as the evaluation that used it -- and the block itself
+    says so. The disclosure is asserted here so it cannot be quietly dropped
+    to make the provenance look cleaner than it is.
+    """
+    import json
+    from pathlib import Path
+
+    path = (Path(__file__).resolve().parent.parent
+            / "data_factory" / "locked_thresholds.json")
+    block = json.loads(path.read_text(encoding="utf-8"))[
+        "phase7_incremental_attribution"]
+
+    assert block["min_n_per_arm"] == ia.MIN_N_PER_ARM
+    assert block["_locked_at_utc"], "the lock carries no date"
+    assert "_LOCKED_LATE__DISCLOSURE" in block, (
+        "the late-lock disclosure was removed; this threshold does not have "
+        "the same provenance as max_abs_smd and the record must say so")
+    assert block["min_n_per_arm"] != json.loads(path.read_text(encoding="utf-8"))[
+        "phase6_experiment_assignment"]["min_assigned_n"], (
+        "the estimator floor and the balance floor answer different questions "
+        "and must not be tied together")
+
+
+@pytest.mark.gate("phase7.min_n")
 def test_the_floor_is_a_declared_constant_not_a_literal():
     assert ia.MIN_N_PER_ARM >= 30, (
         "below ~30 per arm the normal approximation behind the Wald interval "
@@ -294,9 +322,26 @@ def test_predicted_and_observed_are_separate_quantities(seeded_db):
     assert diag["available"] is True
     assert diag["predicted_per_opportunity"] == pytest.approx(999.0)
     assert diag["observed_per_opportunity"] != diag["predicted_per_opportunity"]
-    assert diag["delta"] == pytest.approx(
-        diag["observed_per_opportunity"] - diag["predicted_per_opportunity"])
     assert "not reconciled" in diag["note"]
+
+    # BOTH denominators are published, and the like-for-like delta is computed
+    # on the common one. Reporting a single delta across two different
+    # populations is what made an earlier version of this diagnostic
+    # unauditable: predicted was averaged over selected candidates only while
+    # observed was averaged over all resolved treatment opportunities.
+    assert diag["predicted_n"] == 1, "one selected candidate was seeded"
+    assert diag["observed_n"] == report["n_resolved"]["treatment"]
+    assert diag["predicted_n"] != diag["observed_n"], (
+        "this fixture is meant to exercise the mismatched-denominator case")
+
+    assert diag["predicted_per_treated_opportunity"] == pytest.approx(
+        999.0 / diag["observed_n"])
+    assert diag["delta_like_for_like"] == pytest.approx(
+        diag["observed_per_opportunity"]
+        - diag["predicted_per_treated_opportunity"])
+    assert diag["delta_over_selected_only"] == pytest.approx(
+        diag["observed_per_opportunity"] - diag["predicted_per_opportunity"])
+    assert diag["delta_like_for_like"] != diag["delta_over_selected_only"]
 
 
 @pytest.mark.gate("phase7.prediction_vs_observation")

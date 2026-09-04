@@ -84,9 +84,19 @@ pins creation to midday (`DEFAULT_CREATED_AT_HOUR = 12`), which suppresses no
 compliance check — every rule still runs — and places the population inside
 business hours. Disclosed in the code, the CLI output, and the evidence file.
 
-**After all three fixes**, mean selected EIV is **+7303** and the action mix is
-`payment_link 456 / reminder 707 / retry 225 / escalate 64`, with 290 treatment
-opportunities selecting nothing executable.
+**After all three fixes**, on the evaluated 3500-opportunity population, the
+action mix is `payment_link 456 / reminder 707 / retry 225 / escalate 64`, and
+**290 of 1742 treatment opportunities select nothing executable** (every
+candidate blocked, or routed to manual review). Mean predicted EIV over the
+1452 selected candidates is **+5,430.16**.
+
+> **Correction, 2026-09-05.** An earlier draft of this section quoted "mean
+> selected EIV +7303" alongside that action mix. The two came from different
+> runs: +7303 was measured on a 60-opportunity smoke check during development,
+> while the action mix is from the final 3500-opportunity population. The
+> correct figure for this population is +5,430.16. The smoke-check number is
+> not evidence about the evaluated population and should not have been placed
+> beside it.
 
 ---
 
@@ -123,19 +133,39 @@ would be a claim this data does not support.
 
 ### Predicted vs observed — a diagnostic, not an agreement check
 
-    predicted EIV / opportunity   +5,430.16   (n=1452 selected candidates)
-    observed      / opportunity   +1,549.72
-    delta                         -3,880.44
-    predicted inside observed 95% CI: True
+**The two figures have different natural denominators.** Stated first, because
+placing them side by side without saying so makes the diagnostic unauditable:
 
-The optimizer expects roughly 3.5× the per-opportunity value the experiment
-measured. The two are different quantities from different sources — predicted
-EIV is the optimizer's expectation for the candidate the rule engine selected,
-observed is the measured arm difference — and they are reported side by side
-so the divergence is visible. Nothing reconciles them. The predicted value
-does fall inside the observed interval, but that interval is wide enough to
-contain almost any plausible value, so it is weak agreement at best and should
-not be read as validation.
+| figure | value | averaged over | n |
+|---|---:|---|---:|
+| predicted EIV, selected candidates only | +5,430.16 | treatment opportunities that received an **executable action** | 1452 |
+| predicted EIV, all resolved treatment | **+4,526.18** | **all** resolved treatment opportunities | 1742 |
+| observed incremental ₹ | **+1,549.72** | **all** resolved treatment opportunities | 1742 |
+
+    delta, like for like (common denominator 1742)  -2,976.45
+    delta, against selected-only predicted          -3,880.44   (mismatched)
+    like-for-like predicted inside observed 95% CI: True
+
+The gap between the two predicted figures is the **290 treatment opportunities
+that selected nothing executable** — every candidate blocked, or routed to
+manual review. They contribute no predicted EIV but they *do* count in the
+observed arm difference, so only the 1742-denominator row is like-for-like
+with the observed number. **−2,976.45 is the correct delta**; −3,880.44 is the
+same comparison on mismatched denominators and is shown only so the difference
+is visible rather than silently corrected away.
+
+> **Correction, 2026-09-05.** The first version of this section reported the
+> delta as −3,880.44 without stating that the two figures were averaged over
+> different populations. `incremental_attribution` now emits both denominators
+> and both deltas, so the mismatch cannot recur unnoticed.
+
+Even on the common denominator the optimizer expects roughly 2.9× the value
+the experiment measured. The two remain different quantities from different
+sources — predicted EIV is the optimizer's expectation for the candidate the
+rule engine selected, observed is the measured arm difference — and nothing
+reconciles them. The predicted value does fall inside the observed interval,
+but that interval is wide enough to contain almost any plausible value, so it
+is weak agreement at best and must not be read as validation.
 
 ### The estimator, named
 
@@ -225,3 +255,35 @@ The Phase 4 latency miss is **unchanged and still open**.
 `test_end_to_end_latency_against_the_declared_budget` remains one of the
 recorded known failures. Nothing about the budget, the measurement or the
 disclosure moved.
+
+---
+
+## 6. Threshold provenance — MIN_N_PER_ARM was locked LATE
+
+Asked at close-out whether `MIN_N_PER_ARM = 30` carried the same evidentiary
+provenance as `MAX_ABS_SMD`. **It did not, and the answer is recorded here
+rather than glossed.**
+
+    MAX_ABS_SMD = 0.10      locked at commit 6b6409e, 2026-09-04 05:46
+                            -> the X5 evaluation it judged ran at 3d37bad,
+                               a day and five checkpoints later
+
+    MIN_N_PER_ARM = 30      introduced at commit 48e3810, 2026-09-05 01:12
+                            -> the SAME commit as the evaluation that used it
+
+It was in fact written before that evaluation ran — the module was authored
+while the 3500-opportunity population was still generating — but **nothing in
+the repository can verify that ordering**, and under this project's own
+discipline an unverifiable lock is an unlocked one. Claiming the same standing
+for both would be false.
+
+**Locked retrospectively and openly**, dated 2026-09-05, as
+`phase7_incremental_attribution` in `data_factory/locked_thresholds.json`,
+with the late-lock disclosure recorded in the block itself and in the
+constant's own comment.
+
+**The reported result is unaffected.** The evaluated population is n=1742
+treatment / 1758 control, clearing the floor by roughly 58×; no value of this
+threshold anywhere between 30 and ~1700 would change the outcome. The lock
+matters for the *next* evaluation, not this one — which is exactly why it is
+worth having even when it changes nothing today.

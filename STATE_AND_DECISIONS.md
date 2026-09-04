@@ -583,3 +583,48 @@
 * **Two Phase 6 findings were WITHDRAWN, with their diagnoses kept rather than deleted**
   * **The "missing bank/psp columns" defect.** Filed during planning as live code breakage with a proposed `ADDITIVE_COLUMNS` patch. It was a stale database file — mtime ~30 hours *older* than the commit that added the columns — being read as evidence about the code. No patch was made. What survived is a different, real finding: the repository could not build its database from a clean checkout, because `a7cd6d2` added `bank`/`psp` to the payments INSERT without regenerating the tracked seed JSON. Fixed by regenerating; no code change needed.
   * **"The balance gate is nearly blind to small bias."** Filed at X5 from a detection curve parameterised by a probability-units bias knob rather than by the induced SMD the gate actually measures. A 0.05 bias induces ~0.042 SMD and a 0.10 bias ~0.086, both *below* the 0.10 the gate is told to enforce — not firing there is correct behaviour, and a gate that did would enforce a tighter threshold than the one locked. The tell was detection *falling* as n rose, which no real effect does.
+
+---
+
+# PHASE 6 EXIT GATE + PHASE 7 — LIVE INCREMENTAL ATTRIBUTION (2026-09-05)
+
+* **Phase 6 was complete against EXECUTION_PLAN.md's DoD and NOT complete against `Phase_Acceptance_Test_Gates.md`**
+  * **Why:** the acceptance-gate document sets a higher bar. Phase 6 had assignment and suppression evidence but **no observation evidence at all**, and three `[NEW]` gate rows — concurrent-assignment safety, duplicate-outcome safety, and the concurrency/duplicate-delivery fixture in the exit gate — had no test anywhere. Two documents, two different bars, and the narrower one had been treated as the finish line.
+  * **What breaks if reversed:** a phase signed off against its own summary rather than against the document that defines its acceptance. The DoD audit at X6 was correct on its own terms and still insufficient.
+
+* **Enabling the optimizer at `trigger_event` exposed three defects the ranked pathway had been hiding for the whole project**
+  * **Why:** the optimizer was disabled at every entry point, so the ranked path had never executed against a live database. (1) `optimize._insert_row()` never reads `cursor.lastrowid`, so `recovery_decisions.candidate_id` and `recovery_candidates.selected` had **never been populated by anything** — which made Phase 6's counterfactual probe on `selected = 1` *vacuous*, reading 0 for control because nothing could set it rather than because suppression worked. (2) `trigger_event` hardcoded `method: None`, and with the opportunity's method unknown every method-bearing candidate reads as a payment-method *change* and is structurally non-executable, so the engine fell through to `escalate` in 400 of 400 cases — selecting an action scored at EIV −5088 while a retry scored +4048 sat unexecutable at rank 1. (3) The contact-hours rule is judged against `created_at`, so a run at 07:00 blocked every contact action and left `escalate` the only executable candidate.
+  * **What breaks if reversed:** the incremental number would measure "escalate versus do-nothing", determined by a missing field and by what hour the operator happened to run the script, and would be reported as though it measured the optimizer's policy.
+  * **Note (3) is not a defect** — the compliance rule working correctly. It is handled by pinning generation to midday, which suppresses no check and is disclosed in code, CLI output and evidence.
+
+* **`candidate_id` recovery lives in `pipeline.py`, not in `optimize.py`**
+  * **Why:** the three-line fix belongs in `_insert_row`, but `optimize.py` is frozen-adjacent and its one dated exception (2026-09-03, network health) is explicitly recorded as closed and as authorising no further change. The id is recovered in the caller instead, matched on `rank` — unique among one run's scored rows — rather than on the attribute tuple, which is unique only by convention. Same precedent as `derive_pruned_candidates()`.
+  * **What breaks if reversed:** a frozen module's closed exception silently reopened for convenience.
+
+* **`synthetic_potential_outcome` is its own outcome source, deliberately not folded into `payment_event`**
+  * **Why:** every outcome this experiment has was drawn from the Data Factory's generator, not observed from a real payment system. The point of the column is that a reader can tell a generated outcome from a confirmed one *by query*. `incremental_attribution` refuses to report at all on a population mixing the two.
+  * **What breaks if reversed:** "is this figure synthetic?" becomes unanswerable from the data, and presenting a synthetic result as production evidence is the single most damaging claim this project could make — named in the acceptance gates as a do-not-proceed condition.
+
+* **The incremental figure is reported with a confidence interval that includes zero, and that is stated as the finding**
+  * **The result:** incremental recovery rate **+0.0199, 95% CI [−0.0025, +0.0424]**; incremental ₹/opportunity +1,549.72, CI [−3,546.99, +6,646.43]; total +2,699,617 over 1742 resolved treatment opportunities. Recovery rates 0.8772 (1528/1742) treatment against 0.8572 (1507/1758) control.
+  * **Why it matters:** the point estimate is positive and the effect is **not statistically distinguishable from zero at this sample size**. Reporting the point estimate without its interval would be a claim this data does not support. Stated in PHASE7_NOTES.md rather than left for a reader to notice.
+  * **Estimator:** difference in proportions (Wald) for the rate; difference in means (Welch, unpooled) for rupees — unpooled because an intervention that works shifts the treated arm's spread as well as its centre, and pooling would assume away the thing being measured.
+
+* **The predicted-vs-observed diagnostic was reported across two different denominators, and is corrected**
+  * **Why:** predicted EIV was averaged over the 1452 treatment opportunities that received an executable action; observed incremental ₹ was averaged over all 1742 resolved treatment opportunities. The 290-opportunity gap is those that selected nothing executable — they contribute no predicted EIV but do count in the observed arm difference. On the common denominator, predicted is **+4,526.18** against observed **+1,549.72**, delta **−2,976.45**, not the −3,880.44 first reported.
+  * **What was done:** the module now emits both denominators and both deltas, so the mismatch cannot recur unnoticed, and a test asserts they differ on a fixture built to exercise exactly that case.
+  * **Also corrected:** a "mean selected EIV +7303" figure quoted beside the evaluated population's action mix came from a 60-opportunity development smoke check, not from the 3500-opportunity population, whose actual figure is +5,430.16.
+
+* **`MIN_N_PER_ARM = 30` was locked LATE, retrospectively, and the disclosure is recorded rather than glossed**
+  * **Why:** `MAX_ABS_SMD` was locked at commit `6b6409e` on 2026-09-04, a day and five checkpoints before the evaluation it judged. `MIN_N_PER_ARM` was introduced at commit `48e3810` on 2026-09-05 — the *same commit* as the evaluation that used it. It was written before that evaluation ran, but nothing in the repository can verify that ordering, and under this project's own discipline an unverifiable lock is an unlocked one.
+  * **What was done:** locked openly as `phase7_incremental_attribution` in `locked_thresholds.json`, dated 2026-09-05, with a `_LOCKED_LATE__DISCLOSURE` field that a test asserts cannot be removed. The reported result is unaffected — n=1742/1758 clears the floor by ~58× — so the lock matters for the next evaluation, not this one.
+  * **What breaks if reversed:** claiming equal provenance for two thresholds that do not have it.
+
+* **Phase 7's acceptance gate is met at AGGREGATE SCOPE ONLY — not fully — and this is disclosed, not hidden**
+  * **Why:** per-segment attribution and the per-segment underpowered-refusal test are cut for time by ruling on 2026-09-04. Two gate rows are unsatisfied: **Segmentation** (not built — the module takes no filter arguments) and the `[NEW]` **estimator misuse guard** (the refusal mechanism exists and is tested, but at aggregate scope, because there are no segments). The exit gate is therefore met on its first half and, on its second, only in aggregate form.
+  * **What breaks if reversed:** a partially-met gate recorded as met. PHASE7_NOTES.md §4 names both rows explicitly.
+
+* **Four test amendments, all dated 2026-09-04/05, none weakening**
+  * Three encoded the optimizer's *old* flag state rather than a property, and were narrowed to what still holds and tightened where possible — `test_synchronous_entry_points_stay_off_while_the_latency_budget_is_unmet` now also asserts the 250 ms budget is **unchanged**, so the enablement is justified by *accepting* the miss rather than redefining it away. The W7 parity test holds the optimizer off for its duration, because the frozen legacy body cannot take the ranked path and a divergence would report the policy change rather than a pipeline defect.
+  * A fifth, `test_the_gate_fails_when_control_shows_an_executed_action`, broke when clock pinning landed: it injected its violation at the real wall clock while assignment was pinned to midday, so the violation landed *before* the assignment it was meant to violate and the gate correctly ignored it. The gate was right and the fixture was wrong — a negative control doing its job about itself.
+  * **The Phase 4 latency miss is unchanged and still open**, failing at p50 727 ms against the 250 ms budget.

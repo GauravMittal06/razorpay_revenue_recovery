@@ -63,6 +63,18 @@ from backend.engine import phase6_config as _cfg
 # to phase6_config.MIN_ASSIGNED_N (3500), which answers a different question:
 # that floor is what the BALANCE gate needs to detect imbalance, this one is
 # what the ESTIMATOR needs for its interval to mean anything.
+#
+# LOCKED LATE, AND SAID SO. Unlike MAX_ABS_SMD -- locked at commit 6b6409e on
+# 2026-09-04, a day and five checkpoints before the evaluation it judged --
+# this constant was introduced in commit 48e3810, the SAME commit as the
+# evaluation that used it. It was written before that evaluation ran, but
+# nothing in the repository can verify that ordering, and an unverifiable lock
+# is an unlocked one. It is therefore locked retrospectively and openly in
+# data_factory/locked_thresholds.json under `phase7_incremental_attribution`,
+# dated 2026-09-05, with the disclosure recorded there and in PHASE7_NOTES.md.
+#
+# The reported result is unaffected: the evaluated population was n=1742 / 1758
+# per arm, clearing this floor by roughly 58x.
 MIN_N_PER_ARM = 30
 
 # z for a two-sided 95% interval.
@@ -243,8 +255,28 @@ def incremental_report(conn) -> dict:
         # selected; observed incremental Rs is what the experiment measured.
         # They are different quantities computed from different sources and
         # are reported side by side precisely so a divergence is visible.
-        "predicted_eiv": {"total": eiv_total, "n_selected": eiv_n,
-                          "per_opportunity": (eiv_total / eiv_n) if eiv_n else None},
+        # NOTE THE TWO DENOMINATORS. `per_opportunity` divides by the number
+        # of SELECTED CANDIDATES (n_selected), i.e. treatment opportunities
+        # that actually received an executable action.
+        # `per_treated_opportunity` divides by ALL resolved treatment
+        # opportunities, which is the denominator the OBSERVED figure uses.
+        #
+        # They differ because some treatment opportunities select nothing
+        # executable -- every candidate blocked, or routed to manual review --
+        # and those still count in the observed arm difference. Only the
+        # second is like-for-like with `incremental_rs_per_opportunity`.
+        "predicted_eiv": {
+            "total": eiv_total,
+            "n_selected": eiv_n,
+            "n_treated_resolved": len(treated),
+            "per_opportunity": (eiv_total / eiv_n) if eiv_n else None,
+            "per_treated_opportunity": (eiv_total / len(treated)) if treated else None,
+            "denominator_note": (
+                "per_opportunity is over selected candidates; "
+                "per_treated_opportunity is over all resolved treatment "
+                "opportunities and is the like-for-like basis for the "
+                "observed figure"),
+        },
     })
     report["predicted_vs_observed"] = _diagnostic(report)
     return report
@@ -253,6 +285,7 @@ def incremental_report(conn) -> dict:
 def _diagnostic(report):
     """Predicted EIV against observed incremental Rs, as a delta, unforced."""
     predicted = report["predicted_eiv"]["per_opportunity"]
+    like_for_like = report["predicted_eiv"]["per_treated_opportunity"]
     observed = report["incremental_rs_per_opportunity"]["estimate"]
     if predicted is None:
         return {"available": False,
@@ -260,14 +293,27 @@ def _diagnostic(report):
     ci = report["incremental_rs_per_opportunity"]
     return {
         "available": True,
+        # Over selected candidates only -- the optimizer's expectation for the
+        # opportunities it actually got to act on.
         "predicted_per_opportunity": predicted,
+        "predicted_n": report["predicted_eiv"]["n_selected"],
+        # Over ALL resolved treatment opportunities, which is the denominator
+        # the observed figure uses. THIS is the one to compare.
+        "predicted_per_treated_opportunity": like_for_like,
         "observed_per_opportunity": observed,
-        "delta": observed - predicted,
-        "predicted_within_observed_ci": ci["ci_low"] <= predicted <= ci["ci_high"],
+        "observed_n": report["predicted_eiv"]["n_treated_resolved"],
+        # Computed on the common denominator, not on the mismatched pair.
+        "delta_like_for_like": observed - like_for_like,
+        "delta_over_selected_only": observed - predicted,
+        "predicted_within_observed_ci":
+            ci["ci_low"] <= like_for_like <= ci["ci_high"],
         "note": "Different quantities from different sources: predicted EIV is "
-                "the optimizer's expectation for the selected candidate, "
-                "observed is the measured arm difference. Divergence is "
-                "reported, not reconciled.",
+                "the optimizer's expectation for the candidate the rule engine "
+                "selected, observed is the measured arm difference. They also "
+                "have different natural denominators -- see "
+                "delta_like_for_like, which puts both over all resolved "
+                "treatment opportunities. Divergence is reported, not "
+                "reconciled.",
     }
 
 
@@ -323,11 +369,19 @@ def format_report(report: dict) -> str:
     lines.append("  PREDICTED vs OBSERVED (diagnostic, not an agreement check)")
     if diag["available"]:
         lines += [
-            f"    predicted EIV / oppty : {diag['predicted_per_opportunity']:+,.2f}"
-            f"   (n={report['predicted_eiv']['n_selected']} selected candidates)",
-            f"    observed    / oppty   : {diag['observed_per_opportunity']:+,.2f}",
-            f"    delta                 : {diag['delta']:+,.2f}",
-            f"    predicted inside the observed 95% CI: "
+            "    THE TWO FIGURES HAVE DIFFERENT NATURAL DENOMINATORS; both are shown.",
+            f"    predicted EIV, over selected candidates only  : "
+            f"{diag['predicted_per_opportunity']:+,.2f}  (n={diag['predicted_n']})",
+            f"    predicted EIV, over ALL resolved treatment    : "
+            f"{diag['predicted_per_treated_opportunity']:+,.2f}  (n={diag['observed_n']})",
+            f"    observed,      over ALL resolved treatment    : "
+            f"{diag['observed_per_opportunity']:+,.2f}  (n={diag['observed_n']})",
+            "",
+            f"    delta, like for like (common denominator)     : "
+            f"{diag['delta_like_for_like']:+,.2f}",
+            f"    delta, against selected-only predicted        : "
+            f"{diag['delta_over_selected_only']:+,.2f}   (mismatched denominators)",
+            f"    like-for-like predicted inside observed 95% CI: "
             f"{diag['predicted_within_observed_ci']}",
         ]
     else:

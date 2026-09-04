@@ -231,6 +231,18 @@
     "reporting_requirement": "The gate reports RAW NUMBERS, never a bare verdict: n per arm, mean/median/sd of amount_at_risk per arm, the full level x arm contingency table, and every level's signed SMD including excluded ones. The verdict is derived from those figures in the report and never substituted for them."
   },
 
+  "phase7_incremental_attribution": {
+    "_locked_at_utc": "2026-09-05T00:00:00Z",
+    "description": "The estimator floor for aggregate incremental attribution. HARD gate: below it the module reports 'insufficient data' and no number at all.",
+    "_mirrors": "backend/analytics/incremental_attribution.py MIN_N_PER_ARM; tests/test_phase7_attribution.py asserts the two agree.",
+    "min_n_per_arm": 30,
+    "_rationale": "30 per arm is the conventional floor at which the normal approximation behind the Wald interval is defensible at all. Below it a confidence interval is not a weak result but a misleading one -- wide enough to contain anything while still looking like a measurement.",
+    "_deliberately_not_tied_to": "phase6_experiment_assignment.min_assigned_n (3500). Those floors answer different questions: 3500 is what the BALANCE gate needs to detect imbalance against a 0.10 SMD bound, 30 is what the ESTIMATOR needs for its interval to mean anything. Tying them would make one move silently with the other.",
+    "_LOCKED_LATE__DISCLOSURE": "This value does NOT have the same evidentiary provenance as max_abs_smd, and that is stated rather than implied. max_abs_smd was locked at commit 6b6409e on 2026-09-04, a day and five checkpoints before the X5 evaluation it judged. min_n_per_arm was introduced in commit 48e3810 on 2026-09-05 -- the SAME commit as the evaluation that used it. It was in fact written before that evaluation ran, but nothing in the repository can verify that ordering, and under this project's own discipline an unverifiable lock is an unlocked one. It is therefore locked HERE, dated 2026-09-05, retrospectively and openly. The current result is unaffected: the evaluated population is n=1742 treatment / 1758 control, both clearing 30 by roughly 58x, so no value of this floor anywhere between 30 and ~1700 would change the reported outcome. Any FUTURE evaluation is judged against this dated lock.",
+    "estimator": "difference in proportions with a Wald 95% interval (rate); difference in means with a Welch unpooled-variance 95% interval (rupees)",
+    "reporting_requirement": "Every reported figure carries its confidence interval, the population it is averaged over, and an explicit synthetic label. A point estimate without its interval is a claim the data may not support."
+  },
+
   "phase6_counterfactual_consistency": {
     "_locked_at_utc": "2026-09-04T00:00:00Z",
     "description": "Control suppression is verifiably real rather than cosmetic. HARD gate. Locked at X0, before the suppression code existed.",
