@@ -741,3 +741,40 @@ point to obtain a pass.
 requested or granted. `candidate_generation.py`, `ml/inference.py`,
 `ml/outcome_features.py`, the Phase 3 eval artifacts and `optimize.py` are all
 untouched by Phase 6.
+
+---
+
+## Phase 6 exit gate — CLOSED 2026-09-04 (was not met at X6)
+
+The X6 close audited Phase 6 against EXECUTION_PLAN.md's Definition of Done
+and found it met. Measured instead against **`Phase_Acceptance_Test_Gates.md`,
+which sets a higher bar, Phase 6 was NOT complete**: it had assignment and
+suppression evidence but **no observation evidence at all**, and three `[NEW]`
+gate rows had no test anywhere.
+
+That gap is now closed. Full detail in `PHASE7_NOTES.md` §1; in summary:
+
+| Gate row | Closed by |
+|---|---|
+| Assignment safe under **concurrent** attempts | 8 racing workers → one row, all agree on the arm, exactly one told "assigned" |
+| **[NEW] Duplicate-outcome safety** | same event twice → `already_resolved`, no field moves; a *conflicting* second outcome cannot mutate the first; concurrent form has exactly one winner |
+| No retroactive contamination | observing an outcome leaves assignment and its timestamp untouched |
+| Lineage | outcome → opportunity → assignment → decision → execution in one join |
+| Exit gate, end-to-end | assignment + suppression + observation on one population |
+
+All in `tests/test_phase6_exit_gate.py`.
+
+**Observation evidence now exists**: 3500 opportunities carry realized
+outcomes, all through `observe_outcome()`, all labelled
+`synthetic_potential_outcome`. Both hard gates re-run and still hold — balance
+max |SMD| = 0.0475, counterfactual PASS.
+
+**One correction to the X6 close.** That section reported the counterfactual
+gate as passing on all four probes. Two of those probes were **vacuous** at the
+time, not passing: `selected_candidates` read 0 because
+`recovery_candidates.selected` had never been set by anything in the system's
+history (see PHASE7_NOTES.md §2a), and `outbound_messages` read 0 because the
+only executable action being selected was `escalate`, which has no delivery
+path. Both now read non-zero on the treatment arm (1452 and 632) and zero on
+control, which is the check actually doing its job. The X6 verdict was right;
+two of its four supporting probes were not yet evidence.

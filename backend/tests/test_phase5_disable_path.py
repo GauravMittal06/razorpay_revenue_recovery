@@ -82,7 +82,27 @@ def test_the_switch_defaults_on_so_the_pathway_exists():
     default.
     """
     assert cfg.OPTIMIZER_PATHWAY_ENABLED is True
-    assert not any(cfg.OPTIMIZER_ENABLED_BY_ENTRY_POINT.values())
+
+    # AMENDMENT, Phase 7, 2026-09-04. This previously asserted
+    # `not any(OPTIMIZER_ENABLED_BY_ENTRY_POINT.values())`, which encoded the
+    # entry-point table's state at Phase 5 rather than the property the test
+    # is named for. Phase 7 enables the optimizer at the creation entry point
+    # by ruling, so that live opportunities carry the candidate the rule
+    # engine selected and the predicted-versus-observed diagnostic has
+    # something to compare.
+    #
+    # NOT a weakening: pinning the exact table is stronger than `not any`,
+    # because it also fails if `customer_reply` or `dispatch` is ever enabled
+    # silently -- which `not any` could only catch while everything was off.
+    # The point of the test is unchanged: the kill switch is separate from the
+    # entry-point table, and it stays armed.
+    assert cfg.OPTIMIZER_ENABLED_BY_ENTRY_POINT == {
+        "batch": False,
+        "dispatch": False,
+        "trigger_event": True,
+        "customer_reply": False,
+    }, ("the optimizer entry-point table has drifted from the ruled state; "
+        "enabling it anywhere else is a decision, not a default")
 
 
 # --------------------------------------------------------------------------

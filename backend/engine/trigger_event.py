@@ -38,9 +38,15 @@ import sqlite3
 from backend.engine.assign_experiment_group import assign_experiment_group
 from backend.engine.pipeline import run_recovery_pipeline
 
-# Request-synchronous entry point: the optimizer stays disabled here while
-# the ~750ms latency budget is unmet, and it does NOT use opportunity_lock
-# (see ENTRY_POINTS_USING_OPPORTUNITY_LOCK for why the asymmetry is correct).
+# Request-synchronous entry point. As of 2026-09-04 the optimizer IS enabled
+# here (phase5_config.OPTIMIZER_ENABLED_BY_ENTRY_POINT) so that live
+# opportunities carry the candidate the rule engine selected -- Phase 7's
+# predicted-versus-observed diagnostic has nothing to compare against
+# otherwise. The ~750ms latency budget is still unmet and still disclosed;
+# that trade is recorded with the flag, not here.
+#
+# It does NOT use opportunity_lock (see ENTRY_POINTS_USING_OPPORTUNITY_LOCK
+# for why the asymmetry is correct).
 ENTRY_POINT = "trigger_event"
 
 VALID_EVENT_TYPES = {"checkout_abandoned", "payment_failed", "invoice_overdue"}
@@ -62,11 +68,15 @@ def _new_payment_id():
     return "pay_" + uuid.uuid4().hex[:12]
 
 
+VALID_METHODS = {"card", "netbanking", "upi", "wallet"}
+
+
 def trigger_event(event_type: str, amount: int, conn,
                    root_cause: str = None,
                    customer_id: str = None,
                    days_overdue: int = None,
-                   event_id: str = None) -> dict:
+                   event_id: str = None,
+                   method: str = None) -> dict:
     if event_type not in VALID_EVENT_TYPES:
         return {
             "status": "invalid_event_type",
@@ -77,6 +87,12 @@ def trigger_event(event_type: str, amount: int, conn,
         return {
             "status": "invalid_amount",
             "error": "amount must be greater than 0",
+        }
+
+    if method is not None and method not in VALID_METHODS:
+        return {
+            "status": "invalid_method",
+            "error": f"method must be one of {sorted(VALID_METHODS)}",
         }
 
     if days_overdue is not None and event_type != "invoice_overdue":
@@ -191,7 +207,22 @@ def trigger_event(event_type: str, amount: int, conn,
         "status": "created",
         "order_id": None,
         "invoice_id": None,
-        "method": None,
+        # Phase 7, 2026-09-04. Was hardcoded None, which had a consequence far
+        # out of proportion to the omission: a candidate carrying a concrete
+        # payment method is treated as a METHOD CHANGE when the opportunity's
+        # own method is unknown, and method changes are structurally
+        # non-executable. So for every live-created opportunity the rule engine
+        # walked past retry, payment_link and reminder alike and fell through
+        # to `escalate` -- measured at 400 of 400 before this fix, selecting an
+        # action the optimizer scored at EIV -5088 while a retry it scored at
+        # +4048 sat unexecutable at rank 1.
+        #
+        # It stayed invisible because the optimizer was disabled at every entry
+        # point, so the ranked pathway had never run against live data.
+        #
+        # Optional and defaulting to None, so a caller that does not know the
+        # method behaves exactly as before.
+        "method": method,
         "email": None,
         "contact": None,
         "error_code": None,

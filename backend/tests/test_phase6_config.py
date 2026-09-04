@@ -167,7 +167,24 @@ def test_resolution_vocabulary_carries_lost_and_not_partially_recovered():
 @pytest.mark.gate("phase6.declared_bounds")
 def test_outcome_sources_are_a_closed_vocabulary_naming_every_caller():
     assert set(db.OUTCOME_SOURCES) == {
-        "manual_confirmation", "executor_stop", "payment_event"}
+        "manual_confirmation", "executor_stop", "payment_event",
+        "synthetic_potential_outcome"}
+
+
+@pytest.mark.gate("phase6.declared_bounds")
+def test_the_synthetic_source_is_distinct_from_every_real_one():
+    """
+    A synthetic outcome must be distinguishable from a confirmed one in the
+    DATA, not merely in the narration around it. Folding it into
+    `payment_event` would make "is this figure synthetic?" unanswerable by
+    query, and presenting a synthetic result as a production one is the single
+    most damaging claim this project could make.
+    """
+    assert "synthetic_potential_outcome" in db.OUTCOME_SOURCES
+    assert "synthetic_potential_outcome" != "payment_event"
+    from backend.data.generate_experiment_outcomes import SOURCE
+    assert SOURCE == "synthetic_potential_outcome"
+    assert SOURCE in db.OUTCOME_SOURCES
 
 
 @pytest.mark.gate("phase6.declared_bounds")

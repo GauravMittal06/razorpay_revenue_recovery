@@ -262,12 +262,33 @@ TRIGGER_SPECS = [
 
 @pytest.mark.gate("phase5.shared_pipeline")
 def test_trigger_event_parity_over_the_fixed_spec_list(tmp_path, seed_data_dir,
-                                                        pinned_clock, capsys):
+                                                        pinned_clock, capsys,
+                                                        monkeypatch):
     """
     Every event type and both invoice-overdue escalation branches, legacy
     sequence vs unified pipeline.
+
+    AMENDMENT, Phase 7, 2026-09-04. The optimizer is now ENABLED at
+    `trigger_event` by ruling, and this comparison holds it OFF for the
+    duration.
+
+    That is not dodging the change; it is what keeps the test measuring its
+    own subject. The legacy body below is a frozen copy of the pre-W7
+    four-call sequence, and the claim under test is that W7's REFACTOR changed
+    no behaviour. Enabling the optimizer is a deliberate POLICY change on top
+    of that refactor -- the unified side would take the ranked path while the
+    frozen legacy copy cannot, so any divergence would be reporting the
+    policy, not a pipeline defect, and the refactor guarantee would quietly
+    stop being checked at all.
+
+    The optimizer-on behaviour is covered where it belongs:
+    test_phase5_fallthrough.py for the ranked path itself, and
+    test_phase6_exit_gate.py end to end.
     """
     from backend.engine.trigger_event import trigger_event
+
+    monkeypatch.setitem(cfg.OPTIMIZER_ENABLED_BY_ENTRY_POINT,
+                        "trigger_event", False)
 
     legacy_conn = _fresh_seeded_db(tmp_path, seed_data_dir, "t_legacy.db")
     unified_conn = _fresh_seeded_db(tmp_path, seed_data_dir, "t_unified.db")

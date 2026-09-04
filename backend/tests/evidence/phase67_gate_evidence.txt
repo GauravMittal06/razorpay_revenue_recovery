@@ -1,0 +1,87 @@
+Phase 6 exit gate + Phase 7 attribution -- evidence
+======================================================================
+ALL OUTCOMES BELOW ARE SYNTHETIC. They were drawn from the Data Factory's
+potential-outcome generator (outcome_model.draw_outcome) and are NOT
+observations of any real payment system. outcome_source records this per row.
+
+Population : 3500 opportunities via engine/trigger_event.py, optimizer ENABLED
+             python -m backend.data.generate_experiment_volume --count 3500
+             python -m backend.data.generate_experiment_outcomes
+created_at : pinned to hour 12 (see generate_experiment_volume.DEFAULT_CREATED_AT_HOUR)
+Optimizer  : trigger_event=True  (latency budget 250ms STILL UNMET and disclosed)
+
+outcome_source distribution over resolved experiment rows: {'synthetic_potential_outcome': 3500}
+
+RANDOMIZATION BALANCE -- RAW FIGURES
+  assigned total   : 3500
+  treatment / control : 1742 / 1758
+  observed holdout : 0.5023 (declared 0.5)
+
+  amount_at_risk (continuous)
+    arm            n         mean           sd     median      min      max
+    treatment   1742    124044.79     71435.10   121420.0      537   249817
+    control     1758    126966.48     71647.72   127783.0      587   249930
+    SMD = -0.0408
+
+  diagnosis (categorical)
+    level                    n_t   n_c      p_t      p_c       SMD  status
+    insufficient_funds       138   151   0.0792   0.0859   -0.0243  GATED
+    payment_declined         132   122   0.0758   0.0694   +0.0246  GATED
+    gateway_timeout          121   134   0.0695   0.0762   -0.0260  GATED
+    authentication_failed    129   118   0.0741   0.0671   +0.0271  GATED
+    expired_card             120   133   0.0689   0.0757   -0.0261  GATED
+    network_error            140   136   0.0804   0.0774   +0.0112  GATED
+    checkout_abandoned       598   630   0.3433   0.3584   -0.0316  GATED
+    invoice_overdue          364   334   0.2090   0.1900   +0.0475  GATED
+    excluded coverage = 0.0000 (ceiling 0.2)
+
+  is_payment_failed (categorical)
+    level                    n_t   n_c      p_t      p_c       SMD  status
+    yes                      780   794   0.4478   0.4516   -0.0078  GATED
+    no                       962   964   0.5522   0.5484   +0.0078  GATED
+    excluded coverage = 0.0000 (ceiling 0.2)
+
+  bound: |SMD| < 0.1   max observed |SMD| = 0.04747693285057291
+  VERDICT: PASS
+
+COUNTERFACTUAL CONSISTENCY -- RAW COUNTS
+  probe                         control    treatment
+  selected_candidates                 0         1452
+  executed_decisions                  0         1742
+  dispatched_or_executed              0         1143
+  outbound_messages                   0          632
+  -- opportunities                 1758         1742
+  -- suppression rows              1758            0
+
+  control must be 0 on every probe; treatment must be >= 1 in total
+  VERDICT: PASS
+
+======================================================================
+INCREMENTAL RECOVERY -- AGGREGATE (SYNTHETIC DATA)
+==============================================================
+  Source: outcomes drawn from the Data Factory's potential-outcome generator.
+          NOT observed from any real payment system. This is a synthetic-environment
+          result and must never be presented as production evidence.
+  Scope : aggregate only -- no segmentation (disclosed, see PHASE7_NOTES.md)
+  Estimator: difference in proportions (Wald 95% CI); difference in means (Welch 95% CI)
+
+  assigned        : {'control': 1758, 'treatment': 1742}
+  resolved        : {'treatment': 1742, 'control': 1758}
+  outcome sources : ['synthetic_potential_outcome']
+
+  recovery rate   : treatment 0.8772 (1528/1742)   control 0.8572 (1507/1758)
+
+  INCREMENTAL RECOVERY RATE : +0.0199
+    95% CI                  : [-0.0025, +0.0424]   (se 0.0115)
+
+  mean recovered Rs         : treatment 104,548.44   control 102,998.71
+  INCREMENTAL Rs / OPPTY    : +1,549.72
+    95% CI                  : [-3,546.99, +6,646.43]   (se 2,600.41)
+  INCREMENTAL Rs (total)    : +2,699,617.41   over 1742 resolved treatment opportunities
+    95% CI                  : [-6,178,854.73, +11,578,089.55]
+
+  PREDICTED vs OBSERVED (diagnostic, not an agreement check)
+    predicted EIV / oppty : +5,430.16   (n=1452 selected candidates)
+    observed    / oppty   : +1,549.72
+    delta                 : -3,880.44
+    predicted inside the observed 95% CI: True

@@ -155,24 +155,58 @@ def test_optimizer_defaults_off_at_every_entry_point():
     deliberately switched on.
     """
     assert cfg.OPTIMIZER_ENABLED_DEFAULT is False
-    assert not any(cfg.OPTIMIZER_ENABLED_BY_ENTRY_POINT.values())
     assert set(cfg.ENTRY_POINTS) == {
         "batch", "dispatch", "trigger_event", "customer_reply"}
+
+    # AMENDMENT, Phase 7, 2026-09-04. `trigger_event` is now deliberately
+    # switched on (see the ruling recorded with the flag). Everything NOT
+    # deliberately switched on must still follow the default, which is what
+    # this test is actually named for -- so the assertion names the one
+    # exception rather than asserting the whole table is off.
+    DELIBERATELY_ENABLED = {"trigger_event"}
+    for entry_point, enabled in cfg.OPTIMIZER_ENABLED_BY_ENTRY_POINT.items():
+        if entry_point in DELIBERATELY_ENABLED:
+            continue
+        assert enabled == cfg.OPTIMIZER_ENABLED_DEFAULT, (
+            f"{entry_point} diverges from OPTIMIZER_ENABLED_DEFAULT without "
+            "being a recorded exception")
 
 
 @pytest.mark.gate("phase5.declared_bounds")
 def test_synchronous_entry_points_stay_off_while_the_latency_budget_is_unmet():
     """
     trigger_event and customer_reply are request-synchronous behind
-    api/server.py. They must not be switched on while optimize_opportunity()
-    is knowingly over its declared budget -- that would put a ~0.75s model
-    call on a user-facing request path.
+    api/server.py, and optimize_opportunity() is knowingly over its declared
+    budget, so enabling the optimizer there puts a ~0.75s model call on a
+    user-facing request path.
+
+    AMENDMENT, Phase 7, 2026-09-04. `trigger_event` is now enabled ANYWAY, by
+    explicit ruling: Phase 7 needs live opportunities to carry the candidate
+    the rule engine selected, and the cost is accepted at demo volume.
+
+    The constraint is not deleted, because deleting it would erase the fact
+    that a known cost is being paid. It is narrowed to what still holds and
+    tightened in the one direction that matters -- the latency miss must still
+    be OPEN and DISCLOSED. If someone were to "fix" the budget by loosening
+    it, or quietly enable customer_reply too, this fails.
     """
-    for entry_point in ("trigger_event", "customer_reply"):
-        assert cfg.OPTIMIZER_ENABLED_BY_ENTRY_POINT[entry_point] is False, (
-            f"{entry_point} is request-synchronous; enabling the optimizer "
-            f"there requires the {cfg.LATENCY_BUDGET_MS}ms budget to be met "
-            "first (PHASE4_HANDOFF section 3)")
+    assert cfg.OPTIMIZER_ENABLED_BY_ENTRY_POINT["customer_reply"] is False, (
+        "customer_reply is request-synchronous and has no Phase 7 need; "
+        f"enabling it requires the {cfg.LATENCY_BUDGET_MS}ms budget to be met "
+        "first (PHASE4_HANDOFF section 3)")
+
+    assert cfg.OPTIMIZER_ENABLED_BY_ENTRY_POINT["trigger_event"] is True, (
+        "trigger_event is enabled by the 2026-09-04 ruling; turning it off "
+        "again is a decision that should be recorded, not a default")
+
+    # The disclosure this exception rests on. The budget is UNCHANGED from
+    # Phase 4 -- the miss was accepted, not resolved -- and the gate that
+    # measures it is still one of the recorded known failures. A silent
+    # loosening of the budget would make the acceptance look like a fix.
+    assert cfg.LATENCY_BUDGET_MS == phase4.LATENCY_BUDGET_MS
+    assert cfg.LATENCY_BUDGET_MS == 250.0, (
+        "the declared latency budget moved; the Phase 7 enablement is "
+        "justified by ACCEPTING the miss, not by redefining it away")
 
 
 # --------------------------------------------------------------------------

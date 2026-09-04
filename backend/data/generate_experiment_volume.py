@@ -26,10 +26,13 @@ REPRODUCIBILITY, HONESTLY STATED
 """
 
 import argparse
+import contextlib
 import random
+import time
+from datetime import datetime
 
 from backend.db.db import get_connection
-from backend.engine.trigger_event import (VALID_EVENT_TYPES,
+from backend.engine.trigger_event import (VALID_EVENT_TYPES, VALID_METHODS,
                                           VALID_ROOT_CAUSES, trigger_event)
 
 # The event mix. Weighted to resemble the seeded world's composition rather
@@ -48,6 +51,50 @@ DAYS_OVERDUE_RANGE = (1, 30)
 DEFAULT_SEED = 20260904
 DEFAULT_COUNT = 240
 
+# The hour of day the population is created at.
+#
+# NOT cosmetic, and stated here because it materially shapes what the
+# experiment measures. `decide_action()` refuses customer contact outside
+# 09:00-20:00, and that check reads the opportunity's own created_at. Left to
+# wall-clock time, a run started at 07:00 has EVERY retry, reminder and
+# payment_link blocked as out-of-window; the rule engine then falls through to
+# `escalate`, which is internal routing and exempt. Measured on a 07:00 run:
+# 27 of 27 treatment opportunities selected `escalate`, an action the
+# optimizer had ranked LAST, while the retry it ranked first sat unexecutable.
+#
+# Without pinning, the treatment arm's policy -- and therefore the headline
+# incremental number -- would depend on what time of day the operator happened
+# to run this. Pinning to midday makes the population reproducible and lets
+# the optimizer's actual ranking reach the executor. It suppresses no
+# compliance check: it places the population inside business hours, which is
+# where a merchant's traffic largely is, and every rule still runs.
+#
+# Disclosed wherever the population is reported.
+DEFAULT_CREATED_AT_HOUR = 12
+
+
+@contextlib.contextmanager
+def _clock_pinned_to_hour(hour):
+    """
+    Freeze time.time() at `hour` o'clock today for the duration of generation.
+
+    Patched on the `time` module so every participant in one decision --
+    trigger_event's created_at, decide_action's contact-window check,
+    execute_action's timestamps -- agrees on the instant. Same technique the
+    W7 parity fixture uses, for the same reason.
+    """
+    if hour is None:
+        yield None
+        return
+    fixed = float(int(datetime.now().replace(
+        hour=hour, minute=0, second=0, microsecond=0).timestamp()))
+    original = time.time
+    time.time = lambda: fixed
+    try:
+        yield fixed
+    finally:
+        time.time = original
+
 
 def _spec(rng):
     event_type = rng.choices([e for e, _ in EVENT_WEIGHTS],
@@ -57,10 +104,17 @@ def _spec(rng):
                   if event_type == "payment_failed" else None)
     days_overdue = (rng.randint(*DAYS_OVERDUE_RANGE)
                     if event_type == "invoice_overdue" else None)
-    return event_type, amount, root_cause, days_overdue
+    # A payment attempt has a method, and omitting it is not neutral: with the
+    # opportunity's own method unknown, every candidate carrying a concrete
+    # method reads as a payment-method CHANGE and is structurally
+    # non-executable, so the rule engine falls through to `escalate` every
+    # time. Drawn from the same four-value vocabulary the seed generator uses.
+    method = rng.choice(sorted(VALID_METHODS))
+    return event_type, amount, root_cause, days_overdue, method
 
 
-def generate(count=DEFAULT_COUNT, seed=DEFAULT_SEED, conn=None):
+def generate(count=DEFAULT_COUNT, seed=DEFAULT_SEED, conn=None,
+             created_at_hour=DEFAULT_CREATED_AT_HOUR):
     """
     Create `count` opportunities through trigger_event(). Returns a summary.
 
@@ -71,22 +125,25 @@ def generate(count=DEFAULT_COUNT, seed=DEFAULT_SEED, conn=None):
     conn = conn or get_connection()
     rng = random.Random(seed)
 
-    summary = {"created": 0, "failed": 0, "by_arm": {}, "by_outcome": {}}
+    summary = {"created": 0, "failed": 0, "by_arm": {}, "by_outcome": {},
+               "created_at_hour": created_at_hour}
     try:
-        for _ in range(count):
-            event_type, amount, root_cause, days_overdue = _spec(rng)
-            result = trigger_event(event_type, amount, conn,
-                                   root_cause=root_cause,
-                                   days_overdue=days_overdue)
-            if result.get("status") != "ok":
-                summary["failed"] += 1
-                continue
-            summary["created"] += 1
-            arm = result["assignment"]["group"]
-            outcome = result["decision"]["outcome"]
-            summary["by_arm"][arm] = summary["by_arm"].get(arm, 0) + 1
-            summary["by_outcome"][outcome] = \
-                summary["by_outcome"].get(outcome, 0) + 1
+        with _clock_pinned_to_hour(created_at_hour):
+            for _ in range(count):
+                event_type, amount, root_cause, days_overdue, method = _spec(rng)
+                result = trigger_event(event_type, amount, conn,
+                                       root_cause=root_cause,
+                                       days_overdue=days_overdue,
+                                       method=method)
+                if result.get("status") != "ok":
+                    summary["failed"] += 1
+                    continue
+                summary["created"] += 1
+                arm = result["assignment"]["group"]
+                outcome = result["decision"]["outcome"]
+                summary["by_arm"][arm] = summary["by_arm"].get(arm, 0) + 1
+                summary["by_outcome"][outcome] = \
+                    summary["by_outcome"].get(outcome, 0) + 1
     finally:
         if owned:
             conn.close()
@@ -97,10 +154,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--count", type=int, default=DEFAULT_COUNT)
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    parser.add_argument("--hour", type=int, default=DEFAULT_CREATED_AT_HOUR)
     args = parser.parse_args()
 
-    summary = generate(count=args.count, seed=args.seed)
-    print(f"event mix seed={args.seed} count={args.count}")
+    summary = generate(count=args.count, seed=args.seed,
+                       created_at_hour=args.hour)
+    print(f"event mix seed={args.seed} count={args.count} "
+          f"created_at_hour={summary['created_at_hour']}")
     print(f"  created {summary['created']}, failed {summary['failed']}")
     print(f"  by arm     : {summary['by_arm']}")
     print(f"  by outcome : {summary['by_outcome']}")

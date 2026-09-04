@@ -162,7 +162,57 @@ def _ranked_candidates(conn, opportunity: dict, entry_point: str):
     result = optimize_opportunity(conn, opportunity["opportunity_id"])
     if result.get("error"):
         return None
-    return result.get("ranked") or None
+    ranked = result.get("ranked") or None
+    if ranked:
+        _attach_candidate_ids(conn, opportunity["opportunity_id"], ranked)
+    return ranked
+
+
+def _attach_candidate_ids(conn, opportunity_id, ranked):
+    """
+    Give each ranked candidate the `candidate_id` its persisted row was
+    assigned, so the rule engine's chosen candidate can be named in
+    `recovery_decisions.candidate_id` and marked `selected` afterwards.
+
+    WHY THIS IS HERE AND NOT IN optimize.py
+        `optimize._insert_row()` does not read back `cursor.lastrowid`, so the
+        in-memory ranked dicts carry no id. That was invisible until Phase 7:
+        the optimizer was disabled at every entry point, so the ranked pathway
+        had never run against a live database, and the consequence was that
+        `recovery_decisions.candidate_id` and `recovery_candidates.selected`
+        were structurally never populated by anything. It also made the
+        counterfactual gate's `selected = 1` probe vacuous -- it read 0 for
+        both arms because nothing could ever set it.
+
+        The three-line fix belongs in `_insert_row`, but `optimize.py` is
+        frozen-adjacent: its one dated exception (2026-09-03, network health)
+        is explicitly recorded as closed and as authorising no further change.
+        So the id is recovered here instead, in the caller that consumes the
+        list. Same precedent as `derive_pruned_candidates()`, which
+        reconstructs rather than modifies the frozen generator it depends on.
+
+    MATCHED ON `rank`, not on the candidate's attribute tuple. Rank is unique
+    among the scored rows of one optimizer run, whereas (action, timing,
+    method, channel) is only unique by convention and would silently
+    mis-attribute if the generator ever emitted a duplicate shape.
+
+    Scoped to the latest run for this opportunity: re-optimizing appends a
+    second set of rows, and the ids that matter are the ones just written.
+    """
+    rows = conn.execute(
+        """
+        SELECT candidate_id, rank FROM recovery_candidates
+        WHERE opportunity_id = ? AND rank IS NOT NULL
+          AND created_at = (SELECT MAX(created_at) FROM recovery_candidates
+                            WHERE opportunity_id = ?)
+        """,
+        (opportunity_id, opportunity_id),
+    ).fetchall()
+    by_rank = {r["rank"]: r["candidate_id"] for r in rows}
+    for candidate in ranked:
+        candidate_id = by_rank.get(candidate.get("rank"))
+        if candidate_id is not None:
+            candidate["candidate_id"] = candidate_id
 
 
 def run_recovery_pipeline(opportunity: dict, conn, *, entry_point: str,

@@ -61,10 +61,32 @@ OPTIMIZER_ENABLED_DEFAULT = False
 # Note this does NOT create a second pipeline. All three entry points call the
 # same shared function; only this value differs per caller, which is what lets
 # the "shared pipeline" gate and the latency constraint both hold.
+#
+# AMENDED 2026-09-04 (Phase 6 close / Phase 7): `trigger_event` -> True.
+#
+# Ruling, for new-case creation only. Phase 7 needs each treatment opportunity
+# to carry the candidate the rule engine actually selected, because the
+# predicted-EIV-versus-observed diagnostic compares the optimizer's own
+# estimate for THAT candidate against what was observed. With the optimizer
+# off at the creation entry point, `recovery_candidates` stayed empty for
+# every live opportunity and there was no predicted value to compare against.
+#
+# The Phase 4 latency miss is UNCHANGED and still open: ranking costs ~640ms
+# p50 against a declared 250ms budget, and
+# test_end_to_end_latency_against_the_declared_budget remains one of the 12
+# known failures. It is knowingly accepted here at demo volume rather than
+# silently resolved -- nothing about the budget, the measurement or the
+# disclosure has moved. If this system ever served real request-synchronous
+# traffic, this flag would have to go back to False until the batch-scoring
+# work lands.
+#
+# `dispatch` is deliberately NOT flipped with it. The dispatcher advances an
+# already-decided action; re-ranking at dispatch time would let the optimizer
+# revisit a decision the rule engine already adjudicated.
 OPTIMIZER_ENABLED_BY_ENTRY_POINT = {
     "batch": OPTIMIZER_ENABLED_DEFAULT,
     "dispatch": OPTIMIZER_ENABLED_DEFAULT,
-    "trigger_event": False,      # request-synchronous
+    "trigger_event": True,       # request-synchronous; see the note above
     "customer_reply": False,     # request-synchronous
 }
 

@@ -93,6 +93,17 @@ OUTCOME_SOURCES = (
     "manual_confirmation",   # the operator utility, retained for demo/testing
     "executor_stop",         # the attempt ceiling closing a case by policy
     "payment_event",         # a real upstream payment-success event
+    # Phase 7, 2026-09-04. An outcome DRAWN from the Data Factory's
+    # potential-outcome generator rather than observed from any real payment
+    # system -- which is every outcome this project's experiment population
+    # has, since no real system exists for it.
+    #
+    # Deliberately its own value rather than folded into `payment_event`: the
+    # whole point of the column is that a reader can tell a generated outcome
+    # from a confirmed one, and a synthetic result presented as a production
+    # one is the single most damaging claim this project could make. Anything
+    # aggregating rows with this source must label its output synthetic.
+    "synthetic_potential_outcome",
 )
 
 # Closed state vocabulary for recovery_executions.state.

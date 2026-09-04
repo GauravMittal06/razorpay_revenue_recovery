@@ -169,12 +169,22 @@ def test_the_gate_fails_when_control_shows_an_executed_action(seeded_db):
 
     generate(count=40, conn=seeded_db)
     control = seeded_db.execute(
-        'SELECT opportunity_id FROM experiment_assignment WHERE "group" = ? '
-        "LIMIT 1", (cfg.CONTROL_GROUP,)).fetchone()
+        'SELECT opportunity_id, assigned_at FROM experiment_assignment '
+        'WHERE "group" = ? LIMIT 1', (cfg.CONTROL_GROUP,)).fetchone()
     assert control, "no control opportunity to corrupt"
 
+    # Stamped at the assignment instant, not "now". Every probe is bounded at
+    # `assigned_at` -- activity strictly before assignment is legitimately not
+    # a violation -- and the volume generator pins creation to midday, so a
+    # decision carrying the real wall clock can land BEFORE the assignment it
+    # is meant to violate and the gate then correctly ignores it.
+    #
+    # That is exactly what happened when clock pinning was introduced: this
+    # negative control started reporting PASS. The gate was right and the
+    # fixture was wrong, which is the failure mode a negative control exists
+    # to expose -- in this case about itself.
     insert_decision(seeded_db, control["opportunity_id"], "retry",
-                    outcome="executed")
+                    outcome="executed", timestamp=control["assigned_at"] + 1)
     decision = cc.verdict(cc.consistency_report(seeded_db))
     assert decision["verdict"] == "FAIL"
     assert any("executed_decisions" in r for r in decision["reasons"])
