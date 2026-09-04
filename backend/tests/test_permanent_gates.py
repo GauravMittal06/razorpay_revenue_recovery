@@ -579,17 +579,59 @@ def test_optimizer_does_not_open_a_second_scoring_path():
 #   * observe_outcome is the SOLE writer of the business-outcome fields, so it
 #     must be able to write `opportunities`. It still holds no compliance or
 #     execution authority: it records what happened, it never decides what may
-#     happen next. It joins this table at X4, when it exists -- listing a
-#     module here before it is written would make the existence check below
-#     fail for the whole of X2 and X3, which is noise, not a gate.
+#     happen next. It joined this table at X4, when it came to exist.
 
 PHASE6_WRITABLE_TABLES = {
     "assign_experiment_group.py": {"experiment_assignment"},
+    "observe_outcome.py": {"opportunities"},
 }
+
+# The business-outcome columns. Exactly one module in the whole codebase may
+# write them.
+OUTCOME_COLUMNS = ("recovered_bool", "partial_recovery_amount", "recovered_at",
+                   "time_to_recovery", "resolution_type")
+
+# The single permitted writer, plus the one deliberate exclusion.
+#
+# db/db.py's load_opportunities() writes these columns too, and stays out by
+# NAME rather than by accident: it constructs a world from a seed file, it does
+# not observe one. Nothing it writes is an observation about a live case.
+OUTCOME_WRITER = "backend/engine/observe_outcome.py"
+OUTCOME_WRITE_EXEMPT = ("backend/db/db.py", "backend/data/generate_seed_data.py")
+
+OUTCOME_UPDATE = re.compile(r"\bUPDATE\s+[\"'`\[]?opportunities\b", re.IGNORECASE)
 
 
 def _phase6_paths() -> list[Path]:
     return [BACKEND_DIR / "engine" / name for name in PHASE6_WRITABLE_TABLES]
+
+
+def _code_without_prose(path: Path) -> str:
+    """
+    Source with docstrings and comments removed, SQL string literals kept.
+
+    A write-statement regex over raw source matches English as readily as SQL.
+    Both of the checks below were caught by exactly that on first run: a
+    docstring reading "The UPDATE carries its own precondition" was reported
+    as `writes carries`. Stripping prose is what makes the difference between
+    a gate that finds real second write routes and one that finds adjectives.
+
+    Docstrings are removed by identity so that ordinary string constants --
+    which is where the SQL actually lives -- survive.
+    """
+    text = path.read_text(encoding="utf-8", errors="replace")
+    try:
+        tree = ast.parse(text, str(path))
+    except SyntaxError:
+        return text
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef,
+                             ast.AsyncFunctionDef)):
+            doc = ast.get_docstring(node, clean=False)
+            if doc:
+                text = text.replace(doc, "")
+    return "\n".join(line for line in text.splitlines()
+                     if not line.strip().startswith("#"))
 
 
 @pytest.mark.gate("permanent.single_authority")
@@ -638,7 +680,7 @@ def test_phase6_modules_write_only_their_declared_table():
         if not path.exists():
             continue
         allowed = PHASE6_WRITABLE_TABLES[path.name]
-        text = path.read_text(encoding="utf-8")
+        text = _code_without_prose(path)
         rel = path.relative_to(PROJECT_ROOT).as_posix()
         for match in WRITE_STATEMENT.finditer(text):
             table = match.group(2).lower()
@@ -684,6 +726,78 @@ def test_only_the_creation_entry_point_assigns_an_experiment_group():
     assert not callers, (
         "assign_experiment_group() is called outside the creation entry "
         f"point: {callers}")
+
+
+@pytest.mark.gate("permanent.single_authority")
+def test_exactly_one_module_writes_a_business_outcome():
+    """
+    EXECUTION_PLAN Phase 6: "A single outcome-ingestion function becomes the
+    sole path by which a recovered / partially recovered / lost business
+    outcome is ever written to an opportunity ... one code path, never two
+    divergent ones."
+
+    Before Phase 6 there were two live writers, and they HAD diverged:
+    mark_opportunity_recovered() guarded its write with a compare-and-swap
+    against a concurrent terminal transition and execute_action()'s stop
+    branch did not. That is not a stylistic duplication -- Phase 7 computes an
+    incremental figure by comparing recovery rates across arms, and a second
+    route resolving opportunities under different rules would bias it in a way
+    nothing downstream could detect, because the rows look well-formed.
+    """
+    offenders = []
+    for path in sorted(BACKEND_DIR.rglob("*.py")):
+        rel = path.relative_to(PROJECT_ROOT).as_posix()
+        if rel == OUTCOME_WRITER or rel in OUTCOME_WRITE_EXEMPT:
+            continue
+        if "/tests/" in rel or "/legacy/" in rel:
+            continue
+        text = _code_without_prose(path)
+        for match in OUTCOME_UPDATE.finditer(text):
+            # Only UPDATE counts. An outcome is by definition a later
+            # observation about a row that already exists, so a creation
+            # INSERT naming these columns is setting them NULL, not recording
+            # anything -- which is exactly what trigger_event.py does, and it
+            # is not a second write route.
+            #
+            # Only a problem when the statement touches an outcome column;
+            # advancing `status` alone is the executor's own job.
+            tail = text[match.start():match.start() + 600]
+            hit = [c for c in OUTCOME_COLUMNS if c in tail]
+            if hit:
+                offenders.append(f"{rel}: writes {hit} on opportunities")
+    assert not offenders, (
+        "a second business-outcome write route exists:\n" + "\n".join(offenders))
+
+
+@pytest.mark.gate("permanent.single_authority")
+def test_the_outcome_writer_exists_where_the_check_expects_it():
+    """Else the scan above silently covers nothing and passes."""
+    assert (PROJECT_ROOT / OUTCOME_WRITER).exists(), \
+        f"{OUTCOME_WRITER} not found; the single-writer check would be vacuous"
+
+
+@pytest.mark.gate("permanent.single_authority")
+def test_the_outcome_writer_is_not_experiment_aware():
+    """
+    An outcome writer that consulted experiment_assignment could suppress
+    control-arm outcomes and drive the measured incremental effect to whatever
+    number the system wanted. A control opportunity must be able to recover --
+    that is the entire point of a control arm.
+    """
+    text = (PROJECT_ROOT / OUTCOME_WRITER).read_text(encoding="utf-8")
+    tree = ast.parse(text)
+    code = text
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Constant) and isinstance(node.value, str)
+                and len(node.value) > 80):
+            code = code.replace(node.value, "")
+    code = "\n".join(l for l in code.splitlines()
+                     if not l.strip().startswith("#"))
+    for token in ("experiment_assignment", "assigned_group", "CONTROL_GROUP",
+                  "get_assignment"):
+        assert token not in code, (
+            f"{OUTCOME_WRITER} references {token!r}; the outcome writer must "
+            "not be experiment-aware")
 
 
 @pytest.mark.gate("permanent.import_hygiene")

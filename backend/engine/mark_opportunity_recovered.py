@@ -1,103 +1,70 @@
 """
-mark_opportunity_recovered(): records a real payment-success event.
-Separate from rule-engine authority -- decide_action()/execute_action()
-own compliance/actions; this owns the ground-truth fact that money was
-actually recovered. Not called by any live trigger yet (Live Agent
-Console wiring is a separate future step).
+mark_opportunity_recovered(): the manual-confirmation operational utility.
 
-Phase 1 (Schema Foundation): renamed from mark_payment_recovered() and
-retargeted at opportunities, since "was this recovered" is a business
-outcome of the whole case (Section 3), never a per-payment-attempt field.
-Writes recovered_bool / recovered_at / time_to_recovery / resolution_type
-/ status / resolved_at -- all opportunity-level, all fields that never
-appear on recovery_decisions or recovery_executions (see execute_action.py
-docstring for why that separation is enforced by schema, not convention).
-By default this records a full recovery (partial_recovery_amount ==
-amount_at_risk); pass `partial_recovery_amount` explicitly for a partial one.
+EXECUTION_PLAN Phase 6 keeps this deliberately -- "a manual confirmation
+(retained as a legitimate, clearly-labeled operational utility for testing and
+demonstration)". It is how a human confirms, in the Live Agent Console, that
+money actually came back.
+
+WHAT CHANGED IN PHASE 6 / X4
+    It no longer writes the business-outcome columns itself. It is now a thin,
+    clearly-labeled wrapper over `observe_outcome()`, which is the single path
+    by which any outcome reaches an opportunity, from any source.
+
+    The compare-and-swap this function used to own moved into observe_outcome
+    unchanged -- it was the better of the two implementations that existed
+    (execute_action's terminal branch had no such guard), so unification
+    adopted it rather than averaging them.
+
+    Its return shape is preserved exactly, because api/actions.simulate_recovery
+    and the console depend on it: status "ok" / "already_recovered" /
+    "rejected_stopped" / "opportunity_not_found", with opportunity_status,
+    recovered_at and partial_recovery_amount on the success path. The mapping
+    from observe_outcome's vocabulary back to that shape is the only logic
+    left in this file.
+
+    It records source="manual_confirmation", which is what makes a
+    human-confirmed outcome distinguishable from a real payment event in the
+    data rather than only in the narration.
 """
 
-import time
+from backend.db.db import OUTCOME_SOURCES
+from backend.engine.observe_outcome import observe_outcome
+
+# Named rather than inlined so the static gate's allowlist and this caller
+# cannot drift apart silently.
+SOURCE = "manual_confirmation"
+assert SOURCE in OUTCOME_SOURCES  # noqa: S101 -- import-time sanity only
 
 
-def mark_opportunity_recovered(opportunity_id: str, conn, partial_recovery_amount: int = None) -> dict:
-    row = conn.execute(
-        "SELECT opportunity_id, status, amount_at_risk, created_at FROM opportunities WHERE opportunity_id = ?",
-        (opportunity_id,),
-    ).fetchone()
-
-    if row is None:
-        return {
-            "opportunity_id": opportunity_id,
-            "status": "opportunity_not_found",
-        }
-
-    current_status = row["status"]
-
-    # These two early returns are a fast path and a clear error message, not
-    # the safety mechanism. The real guard is the WHERE clause below: between
-    # this read and that write, another caller can commit a recovery, and a
-    # check up here cannot see it.
-    if current_status == "stopped":
-        return {
-            "opportunity_id": opportunity_id,
-            "status": "rejected_stopped",
-            "opportunity_status": current_status,
-        }
-
-    if current_status == "recovered":
-        return {
-            "opportunity_id": opportunity_id,
-            "status": "already_recovered",
-            "opportunity_status": current_status,
-        }
-
-    now = int(time.time())
-    amount = partial_recovery_amount if partial_recovery_amount is not None else row["amount_at_risk"]
-    time_to_recovery = now - row["created_at"]
-
-    # Compare-and-swap. The UPDATE repeats the precondition the SELECT above
-    # relied on, so the read-decide-write becomes one atomic statement: SQLite
-    # applies a single UPDATE indivisibly, and exactly one concurrent caller
-    # can match a row whose status is still neither 'recovered' nor 'stopped'.
-    #
-    # Without the WHERE guard every concurrent caller passed the check above,
-    # every one issued this UPDATE, and every one was told "ok" -- while the
-    # row itself ended up looking perfectly clean with a single 'recovered'
-    # status. That is what makes this class of bug survive inspection, and how
-    # one recovery gets counted N times by any ledger that trusts the return
-    # value.
-    cursor = conn.execute(
-        """
-        UPDATE opportunities
-        SET status = 'recovered', recovered_bool = 1, recovered_at = ?,
-            resolved_at = ?, partial_recovery_amount = ?, resolution_type = 'recovered',
-            time_to_recovery = ?
-        WHERE opportunity_id = ?
-          AND status NOT IN ('recovered', 'stopped')
-        """,
-        (now, now, amount, time_to_recovery, opportunity_id),
+def mark_opportunity_recovered(opportunity_id: str, conn,
+                               partial_recovery_amount: int = None) -> dict:
+    result = observe_outcome(
+        opportunity_id, conn,
+        resolution="recovered",
+        source=SOURCE,
+        partial_recovery_amount=partial_recovery_amount,
     )
-    conn.commit()
 
-    if cursor.rowcount == 0:
-        # Lost the race: someone else moved this opportunity to a terminal
-        # state between the read and the write. Re-read to report which.
-        after = conn.execute(
-            "SELECT status FROM opportunities WHERE opportunity_id = ?",
-            (opportunity_id,),
-        ).fetchone()
-        final_status = after["status"] if after else None
+    if result["result"] == "opportunity_not_found":
+        return {"opportunity_id": opportunity_id,
+                "status": "opportunity_not_found"}
+
+    if result["result"] == "already_resolved":
+        # The caller's two distinct rejection reasons. `stopped` and
+        # `recovered` are different answers to "why did this not take effect",
+        # and the console shows them differently.
         return {
             "opportunity_id": opportunity_id,
-            "status": "rejected_stopped" if final_status == "stopped"
-                      else "already_recovered",
-            "opportunity_status": final_status,
+            "status": ("rejected_stopped" if result.get("status") == "stopped"
+                       else "already_recovered"),
+            "opportunity_status": result.get("status"),
         }
 
     return {
         "opportunity_id": opportunity_id,
         "status": "ok",
         "opportunity_status": "recovered",
-        "recovered_at": now,
-        "partial_recovery_amount": amount,
+        "recovered_at": result["recovered_at"],
+        "partial_recovery_amount": result["partial_recovery_amount"],
     }

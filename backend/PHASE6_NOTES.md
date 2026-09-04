@@ -6,7 +6,7 @@ Working record. Written as the phase runs, not reconstructed after it.
     X1  stale artifacts regenerated; baseline captured              DONE
     X2  assign_experiment_group.py + creation-time hook             DONE
     X3  control suppression in the rule engine                      DONE
-    X4  observe_outcome.py as the single ingestion path             --
+    X4  observe_outcome.py as the single ingestion path             DONE
     X5  assignment volume + the two hard gates                      --
     X6  close: notes, inventory, carried-forward closeout           --
 
@@ -347,3 +347,99 @@ check now covers both arms where before it only ever saw the treated one.
 **475 collected, 456 passed, 12 failed, 7 skipped.** The 12 are the X1 baseline
 by name. 425 -> 456 is 13 suppression tests + 18 standalone-import checks.
 Zero new failures.
+
+---
+
+## X4 — one ingestion path, and the divergence it closed
+
+### There were three writers, and two of them had already drifted
+
+| Writer | Wrote | Guarded? |
+|---|---|---|
+| `mark_opportunity_recovered()` | recovered / partial | **yes** — compare-and-swap against a concurrent terminal transition |
+| `execute_action()` terminal `stop` branch | `recovered_bool=0, partial=0, resolution_type='stopped'` | **no** |
+| `db.py load_opportunities()` | all outcome columns | n/a — bulk world construction |
+
+The first two are live code answering the same question under different rules.
+That is not a stylistic duplication: Phase 7 computes an incremental figure by
+comparing recovery rates across arms, so a second route resolving
+opportunities under different rules biases the comparison in a way nothing
+downstream can detect — the rows look perfectly well-formed. The concrete
+defect: a `stop` racing a recovery could overwrite a recovered case as
+unrecovered, corrupting exactly the numerator Phase 7 divides by.
+`test_a_stop_cannot_overwrite_an_already_recovered_case` now pins it.
+
+**Unification adopted the guarded implementation unchanged rather than
+averaging the two.** `observe_outcome()`'s compare-and-swap is
+`mark_opportunity_recovered()`'s, verbatim.
+
+The seed loader stays out **by name**, not by accident: it constructs a world,
+it does not observe one. It is an explicit exemption in the static gate.
+
+### What each caller became
+
+- `mark_opportunity_recovered()` — a thin, clearly-labeled wrapper, retained
+  exactly as EXECUTION_PLAN Phase 6 requires ("a legitimate, clearly-labeled
+  operational utility"). Its legacy return shape is preserved exactly, because
+  `api/actions.simulate_recovery` and the console depend on those strings.
+  Records `source="manual_confirmation"`.
+- `execute_action()`'s stop branch — calls `observe_outcome(...,
+  resolution="stopped", source="executor_stop")`. The rule engine's authority
+  is untouched: it still decides the case closes by policy, and this only
+  records the consequence. The arrow points executor -> observer, never back.
+- `mark_payment_recovered.py` — **deleted** (ruling 2026-09-04). It read and
+  wrote `payments.recovery_status` / `payments.recovered_at`, neither of which
+  exists in the Phase 1 schema, so any call raised `OperationalError`. Its
+  name stays in `FORBIDDEN_AUTHORITY_NAMES` so nothing reintroduces a second
+  recovery writer under it.
+
+### The property that keeps the experiment honest
+
+`observe_outcome` is **not experiment-aware**, and a static gate enforces it. A
+control opportunity can and must be able to recover — that is the entire point
+of a control arm. An outcome writer that consulted `experiment_assignment`
+could suppress control recoveries and drive the measured incremental effect to
+whatever number the system wanted, making the experiment circular.
+
+### Two of the new gates were wrong on first run
+
+Both were false positives from a write-statement regex over English prose:
+
+1. `writes carries` — from the `observe_outcome` docstring sentence "The
+   UPDATE carries its own precondition".
+2. `trigger_event.py` flagged as a second outcome writer — its creation INSERT
+   names the outcome columns to set them NULL. An outcome is by definition a
+   later observation about a row that already exists, so a creation INSERT
+   cannot record one.
+
+Fixed by scanning source with docstrings and comments stripped
+(`_code_without_prose()`), and by restricting the outcome gate to `UPDATE`.
+Recorded because the failure mode is instructive: a gate that greps raw source
+finds adjectives as readily as SQL.
+
+**Verified by mutation.** Restoring the pre-X4 direct write to
+`execute_action` makes `test_exactly_one_module_writes_a_business_outcome`
+fail, naming `['recovered_bool', 'partial_recovery_amount',
+'resolution_type']`; removing it passes again.
+
+### A test amendment, dated 2026-09-04
+
+`test_phase1_concurrency.py::test_recovery_update_is_guarded_by_the_status_it_read`
+read `mark_opportunity_recovered.py`'s source for the compare-and-swap SQL.
+That file now delegates, so the test's own `assert updates` fired on finding no
+UPDATE at all — the 13th failure. The guarded property did not change; it
+moved.
+
+Amended to follow the write to `observe_outcome.py`, plus a second assertion
+the original could not make: the wrapper must contain no outcome write of its
+own. Strictly stronger — a future edit reintroducing a direct unguarded UPDATE
+in *either* file fails here.
+
+### An assumption, flagged rather than buried
+
+`escalated_resolved` has **no producer**. It was named in a Phase 1 column
+comment and no code path has ever written it. `STATUS_FOR_RESOLUTION` maps it
+to a recovery, which is the natural reading of "the escalation was resolved" —
+but a human could equally close an escalation without recovering anything. It
+is recorded in-code as an assumption to be confirmed by whoever adds a
+producer, not inherited silently from here.

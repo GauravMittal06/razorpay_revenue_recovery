@@ -11,16 +11,28 @@ recovery_decisions.outcome only ever says whether the proposed action was
 compliant. recovery_executions.state only ever says where in its lifecycle
 the *approved* action currently is. Neither table is ever the place a
 "was money recovered" fact gets written -- that lives exclusively on
-opportunities, and only mark_opportunity_recovered() (a real payment-success
-signal, not a rule-engine action) is permitted to set it -- except for the
-terminal "stop" action, which is itself the resolution: the case is closed
-as unrecovered by policy, not by a later payment-success event.
+opportunities.
+
+Phase 6 / X4: and it is written by exactly ONE function, observe_outcome().
+This module used to write it directly for the terminal "stop" action, on the
+reading that stop is itself the resolution. That reading was right about the
+meaning and wrong about the mechanism: it made this the system's second
+business-outcome writer, and the two had already diverged --
+mark_opportunity_recovered() guarded its write with a compare-and-swap against
+a concurrent terminal transition and this one did not, so a stop racing a
+recovery could overwrite a recovered case as unrecovered.
+
+The rule engine's authority is unchanged. It still decides that the case
+closes by policy; this module still executes that decision. It just records
+the consequence through the one ingestion path instead of writing the columns
+itself.
 """
 
 import time
 
 from backend.data_factory.candidate_generation import TIMING_HOURS
 from backend.db.db import EXECUTION_STATES
+from backend.engine.observe_outcome import observe_outcome
 from backend.engine.phase5_config import (EVALUABLE_BUT_NOT_EXECUTABLE_ACTIONS,
                                           IMMEDIATE_TIMING_HOURS,
                                           MAX_SCHEDULE_HORIZON_HOURS,
@@ -222,15 +234,19 @@ def execute_action(opportunity: dict, decision: dict, conn) -> dict:
         # unrecovered on the strength of an action that has not happened yet
         # would be a business-outcome write with nothing behind it.
         if action_type in TERMINAL_ACTIONS and state != SCHEDULED_STATE:
-            conn.execute(
-                """
-                UPDATE opportunities
-                SET status = ?, resolved_at = ?, recovered_bool = 0,
-                    partial_recovery_amount = 0, resolution_type = 'stopped'
-                WHERE opportunity_id = ?
-                """,
-                (new_status, now, opportunity_id),
-            )
+            # Phase 6 / X4: routed through observe_outcome() rather than
+            # written here. This branch used to be the system's SECOND writer
+            # of the business-outcome columns, and the two had already
+            # diverged -- mark_opportunity_recovered() guarded its write with
+            # a compare-and-swap against a concurrent terminal transition,
+            # this one did not, so a stop racing a recovery could overwrite a
+            # recovered case as unrecovered.
+            #
+            # The rule engine's authority is untouched: it still decides that
+            # the case is closed by policy, and this call only records the
+            # consequence. The arrow points executor -> observer, never back.
+            observe_outcome(opportunity_id, conn, resolution="stopped",
+                            source="executor_stop", now=now)
         else:
             conn.execute(
                 "UPDATE opportunities SET status = ? WHERE opportunity_id = ?",

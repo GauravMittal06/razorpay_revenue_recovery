@@ -295,33 +295,62 @@ def test_recovery_update_is_guarded_by_the_status_it_read(backend_dir):
     """
     Deterministic companion to the race test below.
 
-    mark_opportunity_recovered() SELECTs the status, decides, and then issues
-    an UPDATE. In SQLite the only way to make that atomic without an explicit
-    transaction is to repeat the precondition in the UPDATE's WHERE clause and
-    check `rowcount` -- a compare-and-swap. This test reads the source rather
-    than the behaviour because a race test can only ever *sometimes* observe
-    the defect, while the missing guard is visible every time.
+    The recovery write SELECTs the status, decides, and then issues an UPDATE.
+    In SQLite the only way to make that atomic without an explicit transaction
+    is to repeat the precondition in the UPDATE's WHERE clause and check
+    `rowcount` -- a compare-and-swap. This test reads the source rather than
+    the behaviour because a race test can only ever *sometimes* observe the
+    defect, while the missing guard is visible every time.
 
-    Expected to FAIL against the current implementation. See finding #7.
+    AMENDMENT, Phase 6 / X4, locked 2026-09-04.
+        Originally this read mark_opportunity_recovered.py, which owned the
+        write. X4 made observe_outcome() the single ingestion path for every
+        business outcome, and mark_opportunity_recovered became a thin
+        labelled wrapper with no SQL of its own -- so the original file scope
+        found no UPDATE at all and failed on its own `assert updates`.
+
+        The guarded property did not change; it moved, and the compare-and-swap
+        adopted was this one, unchanged. (execute_action()'s terminal `stop`
+        branch was the OTHER former writer and had no such guard -- unifying
+        on the guarded implementation is what closed that divergence.)
+
+        NOT a weakening. The check now follows the write to whichever module
+        owns it, and adds a second assertion the original could not make: the
+        wrapper must contain no outcome write of its own. A future edit that
+        reintroduced a direct unguarded UPDATE in either file fails here.
     """
     import ast
 
-    path = backend_dir / "engine" / "mark_opportunity_recovered.py"
-    tree = ast.parse(path.read_text(encoding="utf-8"))
+    writer = backend_dir / "engine" / "observe_outcome.py"
+    tree = ast.parse(writer.read_text(encoding="utf-8"))
 
     updates = [n for n in ast.walk(tree)
                if isinstance(n, ast.Constant) and isinstance(n.value, str)
                and "UPDATE opportunities" in n.value]
-    assert updates, f"no UPDATE against opportunities found in {path.name}"
+    assert updates, (
+        f"no UPDATE against opportunities found in {writer.name}; the single "
+        "outcome-ingestion path must be the module that owns this write")
 
     unguarded = [u.value for u in updates
                  if "status" not in u.value.split("WHERE", 1)[-1]]
     assert not unguarded, (
         "the recovery UPDATE does not repeat the status precondition it just "
         "read, so two concurrent callers can both pass the check and both be "
-        "told \"ok\". Needed: `... WHERE opportunity_id = ? AND status != "
-        "'recovered'` plus a cursor.rowcount check.\n"
+        "told \"ok\". Needed: `... WHERE opportunity_id = ? AND status NOT IN "
+        "('recovered', 'stopped')` plus a cursor.rowcount check.\n"
         + "\n".join(f"  {sql.strip()}" for sql in unguarded))
+
+    # The wrapper must delegate, not write. Anything else is a second route
+    # back, and it would not be covered by the guard checked above.
+    wrapper = backend_dir / "engine" / "mark_opportunity_recovered.py"
+    wrapper_tree = ast.parse(wrapper.read_text(encoding="utf-8"))
+    wrapper_updates = [n for n in ast.walk(wrapper_tree)
+                       if isinstance(n, ast.Constant)
+                       and isinstance(n.value, str)
+                       and "UPDATE opportunities" in n.value]
+    assert not wrapper_updates, (
+        f"{wrapper.name} writes opportunities directly again; it must delegate "
+        "to observe_outcome(), the single ingestion path")
 
 
 @pytest.mark.gate("phase1.race_safety")
